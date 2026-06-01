@@ -93,7 +93,7 @@ function expandRecurring(items, existingBlocks) {
     while (cursor <= limit) {
       if (cursor.getDay() === item.dayOfWeek) {
         const ds = formatDate(cursor);
-        const key = `${ds}|${item.start}|${item.taskId || item.title}`;
+        const key = `${ds}|${item.start}|${item.taskId || item.title || ""}`;
         if (!existingKeys.has(key)) {
           blocks.push({
             id: `rec-${item.id || ""}-${ds}`,
