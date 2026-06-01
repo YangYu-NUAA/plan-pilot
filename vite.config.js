@@ -21,7 +21,9 @@ function readJson(filePath) {
     if (fs.existsSync(filePath)) {
       return JSON.parse(fs.readFileSync(filePath, "utf-8"));
     }
-  } catch {}
+  } catch (e) {
+    console.warn("readJson: failed to parse", filePath, e.message || e);
+  }
   return null;
 }
 
