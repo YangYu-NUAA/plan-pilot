@@ -56,10 +56,10 @@ AI 代理支持两种协议：
 
 `defaultState` 定义了完整数据结构：
 - `settings`: 工作时间区间和任务间隔
-- `ai`: AI 配置（服务商、协议、Key、模型、地址）
+- `ai`: AI 配置（服务商、协议、模型、地址；不包含 Key）
 - `goals[]`: 目标列表（long/month/week，status: active/paused/done）
 - `tasks[]`: 任务列表（关联日期、目标、优先级、预估时间）
-- `blocks[]`: 时间块列表（type: task/busy，可手动或自动生成）
+- `blocks[]`: 时间块列表（type: task/busy，可手动、自动或由周期安排派生；周期派生块不会写入磁盘）
 - `dayPlans{}`: 按日期的晨间规划（固定安排、今日重点、精力等）
 - `reviews[]`: 复盘记录
 - `recurring[]`: 周期安排（固定每周重复的 busy 时间块）

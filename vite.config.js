@@ -68,6 +68,10 @@ function yearKey(dateStr) {
   return dateStr.slice(0, 4);
 }
 
+function isRecurringDerivedBlock(block) {
+  return Boolean(block?.recurringDerived) || String(block?.id || "").startsWith("rec-");
+}
+
 function expandRecurring(items, existingBlocks) {
   if (!Array.isArray(items) || !items.length) return [];
   const blocks = [];
@@ -99,6 +103,8 @@ function expandRecurring(items, existingBlocks) {
         if (!existingKeys.has(key)) {
           blocks.push({
             id: `rec-${item.id || ""}-${ds}`,
+            recurringId: item.id || "",
+            recurringDerived: true,
             date: ds,
             type: "busy",
             taskId: "",
@@ -136,7 +142,7 @@ function loadAllData() {
       const file = readJson(path.join(DAILY_DIR, name));
       if (!file) continue;
       if (Array.isArray(file.tasks)) tasks.push(...file.tasks);
-      if (Array.isArray(file.blocks)) blocks.push(...file.blocks);
+      if (Array.isArray(file.blocks)) blocks.push(...file.blocks.filter((block) => !isRecurringDerivedBlock(block)));
       if (file.dayPlans) Object.assign(dayPlans, file.dayPlans);
       if (Array.isArray(file.reviews)) reviews.push(...file.reviews);
     }
@@ -177,12 +183,13 @@ function saveAllData(data) {
 
   // recurring
   writeJson(RECURRING_FILE, Array.isArray(data.recurring) ? data.recurring : []);
+  const persistedBlocks = (data.blocks || []).filter((block) => !isRecurringDerivedBlock(block));
 
   // group daily items by week and write each week file
   const weekDates = {};
   // Collect all dates that have tasks, blocks, dayPlans, or reviews
   (data.tasks || []).forEach((t) => { if (t.date) weekDates[t.date] = true; });
-  (data.blocks || []).forEach((b) => { if (b.date) weekDates[b.date] = true; });
+  persistedBlocks.forEach((b) => { if (b.date) weekDates[b.date] = true; });
   if (data.dayPlans) Object.keys(data.dayPlans).forEach((d) => weekDates[d] = true);
   (data.reviews || []).forEach((r) => { if (r.date) weekDates[r.date] = true; });
 
@@ -197,7 +204,7 @@ function saveAllData(data) {
       weekStart: ws,
       weekEnd: we,
       tasks: (data.tasks || []).filter((t) => t.date >= ws && t.date <= we),
-      blocks: (data.blocks || []).filter((b) => b.date >= ws && b.date <= we),
+      blocks: persistedBlocks.filter((b) => b.date >= ws && b.date <= we),
       dayPlans: filterDayPlans(data.dayPlans || {}, ws, we),
       reviews: (data.reviews || []).filter((r) => r.date >= ws && r.date <= we),
     });

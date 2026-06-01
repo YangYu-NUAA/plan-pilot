@@ -1,4 +1,4 @@
-const CACHE_NAME = "plan-pilot-v1";
+const CACHE_NAME = "plan-pilot-v2";
 const ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -22,16 +22,8 @@ self.addEventListener("fetch", (event) => {
   const isApi = url.pathname.startsWith("/api/");
 
   if (isApi) {
-    // Network-first for API routes — never serve stale data
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match(event.request)),
-    );
+    // Planning and profile data may contain private information. Never cache API responses.
+    event.respondWith(fetch(event.request));
   } else {
     // Cache-first for static assets
     event.respondWith(

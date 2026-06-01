@@ -206,6 +206,57 @@ function getLocalDate(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function isRecurringDerivedBlock(block) {
+  return Boolean(block?.recurringDerived) || String(block?.id || "").startsWith("rec-");
+}
+
+function expandRecurringBlocks(items, existingBlocks = []) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const blocks = [];
+  const today = new Date();
+  const existingKeys = new Set(
+    existingBlocks.map((block) => `${block.date}|${block.start}|${block.taskId || block.title || ""}`),
+  );
+
+  items.forEach((item) => {
+    if (!Number.isInteger(item.dayOfWeek) || item.dayOfWeek < 0 || item.dayOfWeek > 6) return;
+    const cursor = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endDate = item.endDate ? new Date(`${item.endDate}T00:00:00`) : null;
+    const maxDate = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+    const limit = endDate && endDate < maxDate ? endDate : maxDate;
+
+    while (cursor <= limit) {
+      if (cursor.getDay() === item.dayOfWeek) {
+        const date = getLocalDate(cursor);
+        const key = `${date}|${item.start}|${item.taskId || item.title || ""}`;
+        if (!existingKeys.has(key)) {
+          blocks.push({
+            id: `rec-${item.id || ""}-${date}`,
+            recurringId: item.id || "",
+            recurringDerived: true,
+            date,
+            type: "busy",
+            taskId: "",
+            title: item.title || "",
+            start: item.start,
+            end: item.end,
+            auto: false,
+          });
+          existingKeys.add(key);
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  });
+
+  return blocks;
+}
+
+function replaceRecurringBlocks(items, blocks = []) {
+  const manualBlocks = blocks.filter((block) => !isRecurringDerivedBlock(block));
+  return manualBlocks.concat(expandRecurringBlocks(items, manualBlocks));
+}
+
 function addDays(dateString, amount) {
   const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(year, month - 1, day);
@@ -272,7 +323,10 @@ function hydrateState(input) {
       ? input.goals.map((g) => ({ progress: 0, ...g }))
       : [],
     tasks: mergeDuplicateTasks(Array.isArray(input?.tasks) ? input.tasks : []),
-    blocks: Array.isArray(input?.blocks) ? input.blocks : [],
+    blocks: replaceRecurringBlocks(
+      Array.isArray(input?.recurring) ? input.recurring : [],
+      Array.isArray(input?.blocks) ? input.blocks : [],
+    ),
     dayPlans: input?.dayPlans && typeof input.dayPlans === "object" ? input.dayPlans : {},
     reviews: Array.isArray(input?.reviews) ? input.reviews : [],
     recurring: Array.isArray(input?.recurring) ? input.recurring : (defaultState.recurring || []),
@@ -1000,7 +1054,11 @@ function usePlannerStore() {
             (Array.isArray(fileData.tasks) && fileData.tasks.length > 0) ||
             (Array.isArray(fileData.blocks) && fileData.blocks.length > 0) ||
             (Array.isArray(fileData.goals) && fileData.goals.length > 0) ||
-            (fileData.dayPlans != null && typeof fileData.dayPlans === "object" && Object.keys(fileData.dayPlans).length > 0);
+            (typeof fileData.dayPlans === "object" && Object.keys(fileData.dayPlans).length > 0) ||
+            (Array.isArray(fileData.reviews) && fileData.reviews.length > 0) ||
+            (Array.isArray(fileData.recurring) && fileData.recurring.length > 0) ||
+            (typeof fileData.settings === "object" && Object.keys(fileData.settings).length > 0) ||
+            (typeof fileData.ai === "object" && Object.keys(fileData.ai).length > 0);
           if (hasContent) {
             const merged = hydrateState(fileData);
             setState(merged);
@@ -1607,15 +1665,17 @@ function App() {
   }
 
   function addRecurring(item) {
-    patchPlanner((current) => ({
-      recurring: (current.recurring || []).concat(item),
-    }));
+    patchPlanner((current) => {
+      const recurring = (current.recurring || []).concat(item);
+      return { recurring, blocks: replaceRecurringBlocks(recurring, current.blocks) };
+    });
   }
 
   function deleteRecurring(recId) {
-    patchPlanner((current) => ({
-      recurring: (current.recurring || []).filter((r) => r.id !== recId),
-    }));
+    patchPlanner((current) => {
+      const recurring = (current.recurring || []).filter((item) => item.id !== recId);
+      return { recurring, blocks: replaceRecurringBlocks(recurring, current.blocks) };
+    });
   }
 
   function saveMorningPlan() {
@@ -2753,11 +2813,12 @@ function App() {
                 <button className="primary-action" onClick={() => {
                   if (!recurringDraft.title.trim()) return;
                   const editId = editingRecurringId;
-                  patchPlanner((current) => ({
-                    recurring: (current.recurring || [])
-                      .filter((r) => !editId || r.id !== editId)
-                      .concat({ id: editId || uid("rec"), ...recurringDraft }),
-                  }));
+                  patchPlanner((current) => {
+                    const recurring = (current.recurring || [])
+                      .filter((item) => !editId || item.id !== editId)
+                      .concat({ id: editId || uid("rec"), ...recurringDraft });
+                    return { recurring, blocks: replaceRecurringBlocks(recurring, current.blocks) };
+                  });
                   setRecurringDraft({ title: "", start: "09:00", end: "10:00", dayOfWeek: 1, endDate: "" });
                   setShowRecurringModal(false);
                   setEditingRecurringId(null);
