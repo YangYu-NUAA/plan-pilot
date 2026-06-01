@@ -1576,8 +1576,10 @@ function App() {
   }
 
   function updateAiSettings(patch) {
+    const safe = { ...patch };
+    delete safe.apiKey;
     patchPlanner((current) => ({
-      ai: { ...current.ai, ...patch },
+      ai: { ...current.ai, ...safe },
     }));
   }
 
@@ -2808,8 +2810,7 @@ function App() {
             </label>
           </details>
           <p>
-            当前协议：{planner.ai.protocol === "anthropic" ? "Anthropic Messages" : "OpenAI 兼容"}。Key
-            只保存在本机浏览器，本地原型会通过当前 dev server 代理请求。
+            当前协议：{planner.ai.protocol === "anthropic" ? "Anthropic Messages" : "OpenAI 兼容"}。API Key 通过服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或 .env 文件配置，不会存储在浏览器或数据文件中。
           </p>
           {currentAiPreset.note && <p className="ai-provider-note">{currentAiPreset.note}</p>}
         </section>
