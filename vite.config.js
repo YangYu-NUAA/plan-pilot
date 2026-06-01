@@ -81,11 +81,7 @@ function expandRecurring(items, existingBlocks) {
   );
 
   items.forEach((item) => {
-    if (!item.dayOfWeek && item.dayOfWeek !== 0) {
-      console.warn("expandRecurring: skipping item with missing dayOfWeek", item);
-      return;
-    }
-    if (item.dayOfWeek < 0 || item.dayOfWeek > 6) {
+    if (!Number.isInteger(item.dayOfWeek) || item.dayOfWeek < 0 || item.dayOfWeek > 6) {
       console.warn("expandRecurring: skipping item with invalid dayOfWeek", item.dayOfWeek, item);
       return;
     }
