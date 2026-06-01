@@ -1555,7 +1555,7 @@ function App() {
       month: monthGoal ? { ...monthGoal, parentTitle: monthGoal.parentId ? goalById[monthGoal.parentId]?.title : "" } : null,
       busy,
     };
-  }, [planner.goals, planner.blocks, selectedDate]);
+  }, [planner.goals, planner.blocks, planner.tasks, selectedDate]);
 
   const showAiFollowUp =
     !aiStatus.loading && Boolean(aiStatus.message) && aiTaskSuggestions.length === 0 && /[?？]|请.*回答|需要你先补充|缺少/.test(aiStatus.message);
