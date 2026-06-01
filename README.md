@@ -44,7 +44,7 @@
 - AI 规划访谈：模型先问关键问题，再生成目标、任务或不可用时间块。
 - 自动时间分配：避开会议、监考、通勤等不可用时间；不确定任务会提示你手动决定位置。
 - 每日复盘：记录完成事项、阻碍、调整和明日焦点。
-- 本地数据：计划数据默认保存在浏览器 `localStorage`。
+- 本地数据：计划数据通过 Vite 开发服务器持久化到本地磁盘文件（`data/` 目录），同时缓存在浏览器 localStorage 作为双备份。
 - 数据导入导出：导出 JSON 不包含 API Key。
 - 多模型接入：支持 OpenAI-compatible 和 Anthropic Messages 两类协议。
 
@@ -72,8 +72,8 @@ npm run preview
 
 ## 使用方法
 
-1. 在左侧设置工作开始、工作结束和任务间隔时间。
-2. 如果需要 AI 辅助，勾选“启用 AI 辅助”，选择服务商并填写自己的 API Key。模型名和 API 地址可在“高级设置”中调整。
+1. 在左侧设置工作时段（支持多个时段，如上午/下午/晚上）和任务间隔时间。
+2. 如果需要 AI 辅助，勾选”启用 AI 辅助”，选择服务商。API Key 通过环境变量（`AI_API_KEY` / `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`）或在 `.env` 文件中配置。
 3. 在“今日”页填写固定安排，例如会议、监考、通勤、已约定事项。
 4. 填写“今日最重要”和“变化与风险”，保存晨间规划。
 5. 在任务收集中录入今天要做的任务，也可以点击“AI 今日建议”让模型主动追问或生成建议任务。
@@ -81,7 +81,7 @@ npm run preview
 7. 如果有任务无法可靠自动安排，页面会显示“需要你判断放在哪里”，你可以手动指定时间块。
 8. 在“目标”页新增长期、月度或本周目标，再使用“生成拆解”得到下一层计划。
 9. 在“复盘”页记录完成情况、阻碍、调整和明日重点。
-10. 定期导出 JSON 备份；导出的文件不会包含 API Key。分享或演示前可点击“清空本地数据”移除当前浏览器中的个人内容和 Key。
+10. 定期导出 JSON 备份；导出的文件和 `data/config.json` 均不会包含 API Key。分享或演示前可点击”清空本地数据”移除所有计划数据和磁盘文件。
 
 ## AI 服务商
 
@@ -113,7 +113,7 @@ npm run preview
 - OpenAI-compatible 服务通常会请求 `/chat/completions`。
 - Claude / Opus 使用 Anthropic Messages API。
 - 不同账号和地区可用模型名可能不同，请以供应商控制台为准。
-- API Key 只保存在当前浏览器本地，不会写入仓库，也不会出现在导出 JSON 里。
+- API Key 通过服务器端环境变量管理，不会写入持久化数据文件、仓库或导出 JSON。
 
 ## 环境变量
 
@@ -130,10 +130,11 @@ ANTHROPIC_API_KEY=
 ## 数据与隐私
 
 - 默认没有账号系统，没有云端数据库。
-- 计划数据保存在本机浏览器。
+- 计划数据保存到本地磁盘 `data/` 目录（按周分片），同时缓存在浏览器 localStorage。
+- API Key 通过环境变量或 `.env` 文件配置，不会写入数据文件或导出 JSON。
 - API 请求通过当前 Vite dev server 的 `/api/ai/chat` 代理转发。
 - 开源仓库不会包含任何个人 API Key。
-- 分享给别人使用时，请让对方填写自己的 API Key。
+- 分享给别人使用时，请让对方配置自己的 API Key（通过 `.env` 或环境变量）。
 
 ## 给别人体验
 
@@ -162,7 +163,12 @@ npm run preview
 │   ├── App.jsx             # 主应用逻辑
 │   ├── main.jsx            # React 入口
 │   └── styles.css          # 样式
-├── vite.config.js          # Vite 配置和本地 AI 代理
+├── data/                   # 本地持久化数据（运行时生成，已 gitignore）
+│   ├── config.json         # 设置和 AI 配置
+│   ├── recurring.json      # 周期安排
+│   ├── daily/              # 按周分片的任务/块/日计划/复盘
+│   └── goals/              # 目标（按月/年分文件）
+├── vite.config.js          # Vite 配置、本地 AI 代理和数据 API
 ├── package.json
 ├── .env.example
 ├── LICENSE
@@ -173,22 +179,20 @@ npm run preview
 
 ### Windows
 
-1. 创建 `startup.bat`：
+1. 创建 `startup.bat`（已加入 `.gitignore`，不会提交到仓库）：
    ```bat
    @echo off
-   cd /d <项目路径>
+   cd /d "%~dp0"
    start "" http://127.0.0.1:5174
    npx vite --host 127.0.0.1 --port 5174
    ```
-   将 `<项目路径>` 替换为本项目实际路径。
+   将文件放在项目根目录下，`%~dp0` 会自动定位到脚本所在目录。
 
 2. 按 `Win + R`，输入 `shell:startup`，回车打开启动文件夹。
 
 3. 右键 → 新建快捷方式 → 选择 `startup.bat` → 下一步 → 完成。
 
 下次开机即自动在 `http://127.0.0.1:5174` 启动计划引航。
-
-> 可将 `startup.bat` 加入 `.gitignore`，避免将本地路径提交到仓库。
 
 ## 许可证
 
