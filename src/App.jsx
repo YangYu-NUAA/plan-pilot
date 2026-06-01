@@ -1046,6 +1046,7 @@ function usePlannerStore() {
         body: JSON.stringify(state),
       }).catch(() => {});
     }, 2000);
+    return () => clearTimeout(saveTimer.current);
   }, [state, loaded]);
 
   return [state, setState];
