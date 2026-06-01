@@ -407,17 +407,20 @@ function openAiBody(payload) {
 async function callOpenAiCompatible(payload, apiKey) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);
-  const response = await fetch(chatCompletionUrl(payload.baseUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(openAiBody(payload)),
-    signal: controller.signal,
-  });
-  clearTimeout(timer);
-  return response;
+  try {
+    const response = await fetch(chatCompletionUrl(payload.baseUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(openAiBody(payload)),
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function callAnthropic(payload, apiKey) {
@@ -432,49 +435,52 @@ async function callAnthropic(payload, apiKey) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);
-  const upstream = await fetch(anthropicMessagesUrl(payload.baseUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": payload.anthropicVersion || "2023-06-01",
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  });
-  clearTimeout(timer);
-
-  const text = await upstream.text();
-  let output = text;
   try {
-    const data = JSON.parse(text);
-    if (upstream.ok) {
-      output = JSON.stringify({
-        choices: [
-          {
-            message: {
-              role: "assistant",
-              content: (data.content || [])
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("\n"),
-            },
-          },
-        ],
-        raw: data,
-      });
-    } else if (data.error) {
-      output = JSON.stringify({ error: data.error.message || data.error });
-    }
-  } catch {
-    output = text;
-  }
+    const upstream = await fetch(anthropicMessagesUrl(payload.baseUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": payload.anthropicVersion || "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
-  return {
-    status: upstream.status,
-    headers: upstream.headers,
-    text: async () => output,
-  };
+    const text = await upstream.text();
+    let output = text;
+    try {
+      const data = JSON.parse(text);
+      if (upstream.ok) {
+        output = JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: (data.content || [])
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text)
+                  .join("\n"),
+              },
+            },
+          ],
+          raw: data,
+        });
+      } else if (data.error) {
+        output = JSON.stringify({ error: data.error.message || data.error });
+      }
+    } catch {
+      output = text;
+    }
+
+    return {
+      status: upstream.status,
+      headers: upstream.headers,
+      text: async () => output,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function dataProxy() {
