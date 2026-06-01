@@ -6,8 +6,9 @@ user-profile.json
 .env.*
 !.env.example
 *.local
+*.rej
+*.orig
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-null
