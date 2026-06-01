@@ -1688,20 +1688,21 @@ function App() {
   function submitTaskForm(form) {
     const title = String(fieldValue(form, "title", taskDraft.title)).trim();
     if (!title) return;
+    const date = selectedDate;
     const nextTask = {
       id: uid("task"),
       title,
       estimateMinutes: estimateMinutesForTitle(title, Number(fieldValue(form, "estimateMinutes", taskDraft.estimateMinutes)) || 30),
       priority: String(fieldValue(form, "priority", taskDraft.priority)),
       goalId: String(fieldValue(form, "goalId", taskDraft.goalId || "")),
-      date: selectedDate,
+      date,
       status: "open",
       createdAt: new Date().toISOString(),
     };
 
     patchPlanner((current) => ({
       tasks: mergeDuplicateTasks(current.tasks.concat(nextTask)),
-      blocks: current.blocks.concat(extractBusyBlocksFromText(title, selectedDate, current.blocks)),
+      blocks: current.blocks.concat(extractBusyBlocksFromText(title, date, current.blocks)),
     }));
     setTaskDraft((draft) => ({ ...draft, title: "" }));
   }
