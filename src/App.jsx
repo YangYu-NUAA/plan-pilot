@@ -1000,7 +1000,7 @@ function usePlannerStore() {
             (Array.isArray(fileData.tasks) && fileData.tasks.length > 0) ||
             (Array.isArray(fileData.blocks) && fileData.blocks.length > 0) ||
             (Array.isArray(fileData.goals) && fileData.goals.length > 0) ||
-            (typeof fileData.dayPlans === "object" && Object.keys(fileData.dayPlans).length > 0);
+            (fileData.dayPlans != null && typeof fileData.dayPlans === "object" && Object.keys(fileData.dayPlans).length > 0);
           if (hasContent) {
             const merged = hydrateState(fileData);
             setState(merged);
