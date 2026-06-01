@@ -487,8 +487,9 @@ async function callAnthropic(payload, apiKey) {
 
 function dataProxy() {
   const handler = async (req, res, next) => {
+    const pathname = new URL(req.url, "http://localhost").pathname;
     // data API routes
-    if (req.url === "/api/data") {
+    if (pathname === "/api/data") {
       if (req.method === "GET") {
         try {
           const data = loadAllData();
@@ -520,7 +521,7 @@ function dataProxy() {
     }
 
     // user profile
-    if (req.url === "/api/profile") {
+    if (pathname === "/api/profile") {
       if (req.method === "GET") {
         try {
           const profile = readJson(PROFILE_FILE) || {};
@@ -551,7 +552,7 @@ function dataProxy() {
     }
 
     // AI status check
-    if (req.url === "/api/ai/status" && req.method === "GET") {
+    if (pathname === "/api/ai/status" && req.method === "GET") {
       const keyOk = !!(process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.ANTHROPIC_API_KEY);
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
@@ -560,7 +561,7 @@ function dataProxy() {
     }
 
     // AI proxy route
-    if (req.url !== "/api/ai/chat" || req.method !== "POST") {
+    if (pathname !== "/api/ai/chat" || req.method !== "POST") {
       next();
       return;
     }
