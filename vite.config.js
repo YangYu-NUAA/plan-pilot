@@ -254,7 +254,6 @@ function saveAllData(data) {
   }
   allMonthKeys.forEach((mk) => {
     const existing = readJson(path.join(GOALS_MONTHLY_DIR, `${mk}.json`)) || { goals: [] };
-    const existingIds = new Set(existing.goals.map((g) => g.id));
     const updated = existing.goals.filter((g) => {
       // keep if still in data
       return (data.goals || []).some((ng) => ng.id === g.id);
