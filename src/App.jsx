@@ -2658,7 +2658,7 @@ function App() {
   function startPlanningCoach() {
     const message = {
       role: "user",
-      content: `请开始一个${planningCoach.scope}规划访谈。先问我一个最关键的问题，然后根据我的回答帮助我新增和拆解任务。`,
+      content: planningCoachStartMessage(planningCoach.scope),
     };
     runPlanningCoach([message]);
   }
