@@ -3338,6 +3338,14 @@ function App() {
             todayAiReply={todayAiReply}
             setTodayAiReply={setTodayAiReply}
             sendTodayAiReply={sendTodayAiReply}
+            schedulePreview={schedulePreview}
+            scheduleUndo={scheduleUndo}
+            todayGuideActive={todayGuideActive}
+            scheduleNotice={scheduleNotice}
+            setScheduleNotice={setScheduleNotice}
+            confirmSchedulePreview={confirmSchedulePreview}
+            cancelSchedulePreview={cancelSchedulePreview}
+            undoSchedule={undoSchedule}
           />
         )}
 
@@ -3435,6 +3443,14 @@ function TodayView({
   todayAiReply,
   setTodayAiReply,
   sendTodayAiReply,
+  schedulePreview,
+  scheduleUndo,
+  todayGuideActive,
+  scheduleNotice,
+  setScheduleNotice,
+  confirmSchedulePreview,
+  cancelSchedulePreview,
+  undoSchedule,
 }) {
   const overload = plannedMinutes > workMinutes;
   const futureTasks = useMemo(() =>
