@@ -1883,14 +1883,9 @@ function App() {
   }
 
   function commitFixedPlanFromDayPlan() {
-    let result;
-    patchPlanner((current) => {
-      const r = computeFixedPlanCommit(current.tasks, current.blocks);
-      result = r;
-      if (!r.addedTaskCount && !r.addedBlockCount) return {};
-      return { tasks: r.tasks, blocks: r.blocks };
-    });
-    return result;
+    const r = computeFixedPlanCommit(planner.tasks, planner.blocks);
+    if (r.addedTaskCount || r.addedBlockCount) patchPlanner({ tasks: r.tasks, blocks: r.blocks });
+    return r;
   }
 
   function updateLocalAiKey(value) {
