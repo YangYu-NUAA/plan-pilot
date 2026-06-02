@@ -2761,10 +2761,11 @@ function App() {
       };
     }
 
-    const acceptance = prepareAcceptance(planner);
+    let summary;
 
     patchPlanner((current) => {
       const prepared = prepareAcceptance(current);
+      summary = prepared.summary;
       return {
         goals: current.goals.concat(prepared.goals),
         tasks: mergeDuplicateTasks(current.tasks.concat(prepared.tasks)),
@@ -2777,7 +2778,7 @@ function App() {
       suggestions: [],
       messages: coach.messages.concat({
         role: "assistant",
-        content: `已加入计划：${acceptance.summary.goals} 个目标、${acceptance.summary.tasks} 个任务（今日 ${acceptance.summary.todayTasks} 个，后续 ${acceptance.summary.futureTasks} 个）、${acceptance.summary.busy} 个固定安排。后续任务可在"目标"页的后续任务区查看。`,
+        content: `已加入计划：${summary.goals} 个目标、${summary.tasks} 个任务（今日 ${summary.todayTasks} 个，后续 ${summary.futureTasks} 个）、${summary.busy} 个固定安排。后续任务可在"目标"页的后续任务区查看。`,
       }),
     }));
   }
