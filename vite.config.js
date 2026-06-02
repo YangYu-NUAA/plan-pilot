@@ -549,6 +549,19 @@ function dataProxy() {
         }
         return;
       }
+      if (req.method === "DELETE") {
+        try {
+          if (fs.existsSync(PROFILE_FILE)) fs.unlinkSync(PROFILE_FILE);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ok: true }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
     }
 
     // AI status check
