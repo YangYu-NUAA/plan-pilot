@@ -3286,6 +3286,7 @@ function App() {
           </div>
         </header>
 
+        <ErrorBoundary>
         {activeView === "today" && (
           <TodayView
             planner={planner}
@@ -3378,6 +3379,7 @@ function App() {
             reviews={planner.reviews}
           />
         )}
+        </ErrorBoundary>
       </section>
     </main>
   );
@@ -4824,6 +4826,36 @@ function EmptyState({ icon, text }) {
       <span>{text}</span>
     </div>
   );
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 48, textAlign: "center" }}>
+          <h2 style={{ color: "#e8603f", marginBottom: 12 }}>页面出错了</h2>
+          <p style={{ color: "#4a5a6e", marginBottom: 16 }}>{this.state.error.message}</p>
+          <button
+            className="primary-action"
+            onClick={() => {
+              this.setState({ error: null });
+              window.location.reload();
+            }}
+          >
+            刷新页面
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 export default App;
