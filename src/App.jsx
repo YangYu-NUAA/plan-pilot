@@ -1694,8 +1694,6 @@ function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate }) {
   };
 }
 
-let _autoScheduling = false;
-
 function App() {
   const [planner, setPlanner] = usePlannerStore();
   const [localAiKey, setLocalAiKey] = useState(readLocalAiKey);
@@ -1780,6 +1778,7 @@ function App() {
   }, []);
 
   const aiKeyLoaded = Boolean(localAiKey.trim() || serverAiKeyLoaded);
+  const autoSchedulingRef = useRef(false);
 
   const dayPlan = planner.dayPlans[selectedDate] || {
     fixed: "",
@@ -2079,8 +2078,8 @@ function App() {
   }
 
   async function autoSchedule() {
-    if (_autoScheduling) return;
-    _autoScheduling = true;
+    if (autoSchedulingRef.current) return;
+    autoSchedulingRef.current = true;
     try {
       const snapshot = { tasks: planner.tasks, blocks: planner.blocks };
       const committed = computeFixedPlanCommit(planner.tasks, planner.blocks);
@@ -2180,7 +2179,7 @@ function App() {
         setAiStatus({ loading: false, error: "", message: "已生成规则排期预览（AI 调用失败），确认后应用。" });
       }
     } finally {
-      _autoScheduling = false;
+      autoSchedulingRef.current = false;
     }
   }
 
