@@ -1818,7 +1818,6 @@ function App() {
   );
   const availableMinutes = Math.max(0, workMinutes - busyMinutes);
   const completedCount = todayTasks.filter((task) => task.status === "done").length;
-  const guideQuestion = getGuideQuestion({ dayPlan, todayTasks, todayBlocks, plannedMinutes, workMinutes: availableMinutes });
   const upcomingHighlights = useMemo(() => {
     const weekGoals = planner.goals
       .filter((g) => g.type === "week" && g.status === "active")
