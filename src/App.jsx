@@ -1856,15 +1856,14 @@ function App() {
   const currentAiPreset = AI_PROVIDER_PRESETS[planner.ai.provider] || AI_PROVIDER_PRESETS.custom;
 
   function syncExplicitBusyBlocks(contextText) {
-    const recoveredBlocks = recoverBusyBlocksFromPlanningContext(contextText, selectedDate, planner.blocks);
-    if (!recoveredBlocks.length) return planner.blocks;
-    patchPlanner((current) => ({
-      blocks: mergeUniqueBusyBlocks(
-        current.blocks,
-        recoverBusyBlocksFromPlanningContext(contextText, selectedDate, current.blocks),
-      ),
-    }));
-    return mergeUniqueBusyBlocks(planner.blocks, recoveredBlocks);
+    let merged = planner.blocks;
+    patchPlanner((current) => {
+      const newBlocks = recoverBusyBlocksFromPlanningContext(contextText, selectedDate, current.blocks);
+      if (!newBlocks.length) return {};
+      merged = mergeUniqueBusyBlocks(current.blocks, newBlocks);
+      return { blocks: merged };
+    });
+    return merged;
   }
 
   function currentDayPlanText() {
