@@ -462,8 +462,8 @@ function normalizeBreakdownItems(items, goal, selectedDate) {
 function normalizeTaskSuggestions(items, selectedDate) {
   return (Array.isArray(items) ? items : [])
     .map((item) => {
-      const start = String(item.start || "").trim() || parseTimeInSentence(item.title) || "";
-      const base = {
+      const start = /^\d{2}:\d{2}$/.test(item.start) ? item.start : parseTimeInSentence(item.title || "");
+      return {
         id: uid("suggestion"),
         title: String(item.title || "").trim(),
         estimateMinutes: estimateMinutesForTitle(item.title, Math.max(10, Number(item.estimateMinutes) || 45)),
@@ -471,12 +471,8 @@ function normalizeTaskSuggestions(items, selectedDate) {
         date: /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : selectedDate,
         goalId: String(item.goalId || ""),
         reason: String(item.reason || "").trim(),
+        ...(start ? { fixedTime: true, fixedStart: start } : {}),
       };
-      if (start && /^\d{2}:\d{2}$/.test(start)) {
-        base.fixedTime = true;
-        base.fixedStart = start;
-      }
-      return base;
     })
     .filter((item) => item.title);
 }

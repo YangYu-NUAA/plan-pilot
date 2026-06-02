@@ -22,8 +22,8 @@ npm run preview      # 预览生产构建
 - **React 18** (纯 JavaScript/JSX，无 TypeScript)
 - **Vite 6** 作为构建工具，`@vitejs/plugin-react`
 - **lucide-react** 是唯一第三方 UI 依赖
-- **localStorage** 持久化，key 为 `personal-planning-coach-v1`；同时通过 `POST /api/data` 同步到文件系统
-- **PWA**：public/ 目录下有 manifest 和 service worker，仅 production 启用
+- **localStorage** 持久化，计划数据 key 为 `personal-planning-coach-v1`，浏览器本地 API Key 使用独立 key `plan-pilot-ai-api-key-v1`；计划数据同时通过 `POST /api/data` 同步到文件系统
+- **PWA**：public/ 目录下有 manifest 和 service worker，仅 production 启用；只缓存静态资源，不缓存 `/api/*`
 - 无路由库 — 三个视图（今日/目标/复盘）通过 `activeView` 状态切换
 
 ## 源文件结构
@@ -43,7 +43,7 @@ vite.config.js    # Vite 配置 + 自定义 API 代理中间件 + 文件持久�
 Vite 自定义插件 `local-api-proxy` 处理以下路由：
 - `POST /api/ai/chat` — 转发 AI 请求到外部服务商
 - `GET/POST /api/data` — 文件系统读写（作为 localStorage 的持久化后端）
-- `GET/POST /api/profile` — 用户画像读写
+- `GET/POST/DELETE /api/profile` — 用户画像读写与清理
 - `GET /api/ai/status` — AI Key 配置状态检查
 
 AI 代理支持两种协议：
@@ -56,7 +56,7 @@ AI 代理支持两种协议：
 
 `defaultState` 定义了完整数据结构：
 - `settings`: 工作时间区间和任务间隔
-- `ai`: AI 配置（服务商、协议、模型、地址；不包含 Key）
+- `ai`: AI 配置（服务商、协议、模型、地址、是否允许复盘画像学习；不包含 Key）
 - `goals[]`: 目标列表（long/month/week，status: active/paused/done）
 - `tasks[]`: 任务列表（关联日期、目标、优先级、预估时间）
 - `blocks[]`: 时间块列表（type: task/busy，可手动、自动或由周期安排派生；周期派生块不会写入磁盘）
