@@ -962,12 +962,13 @@ function parseTimeInSentence(sentence) {
 }
 
 function looksLikeSingleActionItem(sentence) {
-  const text = String(sentence || "").trim();
-  if (text.length > 24) return false;
-  if (/焦虑|压力|担心|不知道|不确定|也许|可能|大概|或者|纠结|烦躁|紧张|迷茫/.test(text)) return false;
-  if (/然后|接着|接着再|之后|完了|再然后|以及|还有|另外|此外/.test(text)) return false;
-  const timeMatches = [...text.matchAll(/(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(\d{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*([:：.点时])?\s*(半|一刻|三刻)?/g)];
-  if (timeMatches.length > 1) return false;
+  const s = String(sentence || "").trim();
+  if (!s) return false;
+  if (s.length > 24) return false;
+  if (/焦虑|压力|不知道|有点|暂时没有|没有别的|其他.{0,6}没有|很多.{0,8}(事情|要做)|事情要做|担心|纠结|烦|累/.test(s)) return false;
+  if (/(然后|接着|之后|以及|并且|还要|还得|还需|一件事|另外)/.test(s)) return false;
+  const times = s.match(/(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*\d{1,2}\s*[点:：时]/g) || [];
+  if (times.length > 1) return false;
   return true;
 }
 
@@ -1007,18 +1008,26 @@ function extractBusyBlocksFromText(text, date, existingBlocks = []) {
 }
 
 function extractCoachBusyItemsFromText(text, selectedDate, existingBlocks = []) {
-  const results = [];
+  const recoveredBlocks = [];
+
   String(text || "")
     .split(/[\n。；;]/)
     .map(normalizeSentence)
     .filter(Boolean)
     .forEach((sentence) => {
       const date = inferDateFromText(sentence, selectedDate);
-      extractBusyBlocksFromText(sentence, date, existingBlocks.concat(results)).forEach((block) => {
-        results.push({ kind: "busy", title: block.title, date: block.date, start: block.start, end: block.end });
+      extractBusyBlocksFromText(sentence, date, existingBlocks.concat(recoveredBlocks)).forEach((block) => {
+        recoveredBlocks.push(block);
       });
     });
-  return results;
+
+  return recoveredBlocks.map((block) => ({
+    kind: "busy",
+    title: block.title,
+    date: block.date,
+    start: block.start,
+    end: block.end,
+  }));
 }
 
 function toBusyBlocks(items) {
@@ -1098,16 +1107,20 @@ function extractActionTasksFromText(text, date, existingTasks = []) {
     .split(/[\n。；;]/)
     .map(normalizeSentence)
     .filter((s) => isMorningActionSentence(s) && looksLikeSingleActionItem(s))
-    .map((sentence) => ({
-      id: uid("task"),
-      title: sentence,
-      estimateMinutes: estimateMinutesForTitle(sentence, 45),
-      priority: "medium",
-      goalId: "",
-      date,
-      status: "open",
-      createdAt: new Date().toISOString(),
-    }))
+    .map((sentence) => {
+      const start = parseTimeInSentence(sentence);
+      return {
+        id: uid("task"),
+        title: sentence,
+        estimateMinutes: estimateMinutesForTitle(sentence, 45),
+        priority: start ? "high" : "medium",
+        goalId: "",
+        date,
+        status: "open",
+        ...(start ? { fixedTime: true, fixedStart: start } : {}),
+        createdAt: new Date().toISOString(),
+      };
+    })
     .filter((task) => {
       const key = taskIdentity(task);
       if (existingKeys.has(key)) return false;
@@ -1402,7 +1415,9 @@ function normalizeScheduleQuestions(items, taskById) {
 function normalizeAiScheduleResult(result, { tasks, existingBlocks, settings, selectedDate }) {
   const todayBlocks = existingBlocks.filter((block) => block.date === selectedDate);
   const manualBlocks = todayBlocks.filter((block) => !block.auto);
-  const intervals = getFreeIntervals(settings, manualBlocks);
+  // 固定时间任务先钉到指定时间点，作为 AI 浮动排期的硬约束。
+  const pinned = buildFixedTimeBlocks(tasks, settings, manualBlocks, selectedDate);
+  const intervals = getFreeIntervals(settings, manualBlocks.concat(pinned.blocks));
   const adjustmentsByTaskId = new Map(
     (Array.isArray(result?.taskAdjustments) ? result.taskAdjustments : [])
       .filter((item) => item?.taskId)
@@ -1427,7 +1442,7 @@ function normalizeAiScheduleResult(result, { tasks, existingBlocks, settings, se
     const task = taskById[taskId];
     const start = String(item.start || "");
     const requestedEnd = String(item.end || "");
-    if (!task || task.date !== selectedDate || task.status === "done" || task.fixedTime || scheduledTaskIds.has(taskId)) return;
+    if (!task || task.date !== selectedDate || task.status === "done" || task.fixedTime || task.kind === "fixed" || scheduledTaskIds.has(taskId)) return;
     if (isTicketPurchaseTask(task.title) && !parseTimeInSentence(task.title)) return;
     const meetingEnd = isPostMeetingTask(task.title) ? meetingEndForTask(task.title, manualBlocks) : null;
     if (isPostMeetingTask(task.title) && (!meetingEnd || toMinutes(start) < meetingEnd)) return;
@@ -1447,7 +1462,7 @@ function normalizeAiScheduleResult(result, { tasks, existingBlocks, settings, se
     };
 
     if (!isBlockInsideIntervals(block, intervals)) return;
-    if (overlapsAny(block, manualBlocks.concat(autoBlocks))) return;
+    if (overlapsAny(block, manualBlocks.concat(pinned.blocks).concat(autoBlocks))) return;
     autoBlocks.push(block);
     scheduledTaskIds.add(taskId);
   });
@@ -1466,6 +1481,7 @@ function normalizeAiScheduleResult(result, { tasks, existingBlocks, settings, se
       task.date === selectedDate &&
       task.status !== "done" &&
       !task.fixedTime &&
+      task.kind !== "fixed" &&
       !scheduledTaskIds.has(task.id),
   );
 
@@ -1491,6 +1507,18 @@ function normalizeAiScheduleResult(result, { tasks, existingBlocks, settings, se
     });
   });
 
+  pinned.conflicts.forEach((task) => {
+    if (questions.some((question) => question.taskId === task.id)) return;
+    questions.push({
+      id: uid("schedule-question"),
+      taskId: task.id,
+      title: task.title,
+      estimateMinutes: Number(task.estimateMinutes) || 30,
+      reason: `固定时间 ${task.fixedStart} 与已有安排冲突，没能钉到该时间。`,
+      hint: "请调整该任务时间，或先移开冲突的安排。",
+    });
+  });
+
   const reconciled = reconcileScheduleBlocks(
     existingBlocks
       .filter((block) => !(block.date === selectedDate && block.auto))
@@ -1499,8 +1527,9 @@ function normalizeAiScheduleResult(result, { tasks, existingBlocks, settings, se
     selectedDate,
   );
 
+  // 钉好的固定时间块不参与浮动 reconcile（避免被午休/工作时段裁掉），直接保留用户指定的时间。
   return {
-    blocks: reconciled.blocks,
+    blocks: reconciled.blocks.concat(pinned.blocks),
     tasks: adjustedTasks,
     questions,
     message: result?.message || "",
@@ -1621,7 +1650,7 @@ function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate }) {
     });
 
   const intervals = getFreeIntervals(settings, manualBlocks.concat(pinned.blocks));
-  const autoBlocks = pinned.blocks.slice();
+  const autoBlocks = [];
   const questions = candidates
     .filter((task) => task.needsPlacement)
     .map((task) => ({
@@ -1665,6 +1694,17 @@ function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate }) {
     }
   });
 
+  pinned.conflicts.forEach((task) => {
+    questions.push({
+      id: uid("schedule-question"),
+      taskId: task.id,
+      title: task.title,
+      estimateMinutes: Number(task.estimateMinutes) || 30,
+      reason: `固定时间 ${task.fixedStart} 与已有安排冲突，没能钉到该时间。`,
+      hint: "请调整该任务时间，或先移开冲突的安排。",
+    });
+  });
+
   unscheduled.forEach((task) => {
     questions.push({
       id: uid("schedule-question"),
@@ -1685,7 +1725,7 @@ function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate }) {
   );
 
   return {
-    blocks: reconciledBuild.blocks,
+    blocks: reconciledBuild.blocks.concat(pinned.blocks),
     questions,
   };
 }
@@ -1844,8 +1884,7 @@ function App() {
     };
   }, [planner.goals, planner.blocks, planner.tasks, selectedDate]);
 
-  const showAiFollowUp = todayGuideActive ||
-    (!aiStatus.loading && Boolean(aiStatus.message) && aiTaskSuggestions.length === 0 && /[?？]|请.*回答|需要你先补充|缺少/.test(aiStatus.message));
+  const showAiFollowUp = todayGuideActive && !aiStatus.loading;
 
   const viewHeadline =
     activeView === "today"
@@ -1856,14 +1895,16 @@ function App() {
   const currentAiPreset = AI_PROVIDER_PRESETS[planner.ai.provider] || AI_PROVIDER_PRESETS.custom;
 
   function syncExplicitBusyBlocks(contextText) {
-    let merged = planner.blocks;
-    patchPlanner((current) => {
-      const newBlocks = recoverBusyBlocksFromPlanningContext(contextText, selectedDate, current.blocks);
-      if (!newBlocks.length) return {};
-      merged = mergeUniqueBusyBlocks(current.blocks, newBlocks);
-      return { blocks: merged };
-    });
-    return merged;
+    const recoveredBlocks = recoverBusyBlocksFromPlanningContext(contextText, selectedDate, planner.blocks);
+    if (!recoveredBlocks.length) return planner.blocks;
+
+    patchPlanner((current) => ({
+      blocks: mergeUniqueBusyBlocks(
+        current.blocks,
+        recoverBusyBlocksFromPlanningContext(contextText, selectedDate, current.blocks),
+      ),
+    }));
+    return mergeUniqueBusyBlocks(planner.blocks, recoveredBlocks);
   }
 
   function currentDayPlanText() {
@@ -2243,7 +2284,7 @@ function App() {
     const taskId = String(fieldValue(form, "taskId", blockDraft.taskId || ""));
     const title = String(fieldValue(form, "title", blockDraft.title || "")).trim();
     if (toMinutes(end) <= toMinutes(start)) {
-      setAiStatus({ loading: false, error: "结束时间需要晚于开始时间。", message: "" });
+      setScheduleNotice({ text: "结束时间需要晚于开始时间。", tone: "error" });
       return;
     }
 
@@ -2267,11 +2308,11 @@ function App() {
     };
 
     if (type !== "busy" && !isInsideWorkWindow(nextBlock, planner.settings)) {
-      setAiStatus({ loading: false, error: "任务时间块超出了当前工作时段，请调整时间或先修改工作开始/结束时间。", message: "" });
+      setScheduleNotice({ text: "任务时间块超出了当前工作时段，请调整时间，或先在左侧把工作时段改宽。", tone: "error" });
       return;
     }
     if (type !== "busy" && overlapsAny(nextBlock, getProtectedBreaks(planner.settings))) {
-      setAiStatus({ loading: false, error: "任务时间块与默认午休 12:00-13:00 冲突，请换一个时间。", message: "" });
+      setScheduleNotice({ text: "和默认午休 12:00-13:00 冲突，请换一个时间。", tone: "error" });
       return;
     }
 
@@ -2288,10 +2329,9 @@ function App() {
     );
     if (conflict) {
       const conflictTask = compacted.tasks.find((task) => task.id === conflict.taskId);
-      setAiStatus({
-        loading: false,
-        error: `这个时间与"${conflictTask?.title || conflict.title || "已有时间块"}"重叠，请先调整。`,
-        message: "",
+      setScheduleNotice({
+        text: `这个时间与"${conflictTask?.title || conflict.title || "已有时间块"}"重叠，请把它放到空的时间段。`,
+        tone: "error",
       });
       return;
     }
@@ -2317,7 +2357,7 @@ function App() {
         ),
       );
     }
-    setAiStatus({ loading: false, error: "", message: "已加入手动时间块。再次点击自动安排时，AI 会保留它并重新规划其余任务。" });
+    setScheduleNotice({ text: "已加入手动时间块。再次点「自动安排」时会保留它并重排其余任务。", tone: "info" });
   }
 
   function deleteBlock(blockId) {
@@ -2331,11 +2371,11 @@ function App() {
     if (!existing) return false;
     const nextBlock = { ...existing, ...patch };
     if (nextBlock.type !== "busy" && !isInsideWorkWindow(nextBlock, planner.settings)) {
-      setAiStatus({ loading: false, error: "任务时间块超出了当前工作时段，请调整时间或先修改工作开始/结束时间。", message: "" });
+      setScheduleNotice({ text: "任务时间块超出了当前工作时段，请调整时间，或先在左侧把工作时段改宽。", tone: "error" });
       return false;
     }
     if (nextBlock.type !== "busy" && overlapsAny(nextBlock, getProtectedBreaks(planner.settings))) {
-      setAiStatus({ loading: false, error: "任务时间块与默认午休 12:00-13:00 冲突，请换一个时间。", message: "" });
+      setScheduleNotice({ text: "和默认午休 12:00-13:00 冲突，请换一个时间。", tone: "error" });
       return false;
     }
     const remainingBlocks = planner.blocks.filter(
@@ -2346,10 +2386,9 @@ function App() {
     );
     if (conflict) {
       const conflictTask = planner.tasks.find((task) => task.id === conflict.taskId);
-      setAiStatus({
-        loading: false,
-        error: `这个时间与"${conflictTask?.title || conflict.title || "已有时间块"}"重叠，请先调整。`,
-        message: "",
+      setScheduleNotice({
+        text: `这个时间与"${conflictTask?.title || conflict.title || "已有时间块"}"重叠，请把它放到空的时间段。`,
+        tone: "error",
       });
       return false;
     }
@@ -2358,7 +2397,7 @@ function App() {
         .filter((block) => block.id === blockId || !(block.auto && block.date === nextBlock.date && overlapsAny(nextBlock, [block])))
         .map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
     }));
-    setAiStatus({ loading: false, error: "", message: "时间块已更新。再次点击自动安排时，AI 会据此重新规划其余任务。" });
+    setScheduleNotice({ text: "时间块已更新。再次点「自动安排」时会据此重排其余任务。", tone: "info" });
     return true;
   }
 
@@ -3498,15 +3537,28 @@ function TodayView({
   }
 
   function fillScheduleQuestion(question) {
-    const estimateMinutes = Math.max(10, Number(question.estimateMinutes) || 30);
-    const fixedBlocks = todayBlocks.filter((b) => b.type === "busy" || (!b.taskId && !b.auto));
-    const intervals = getFreeIntervals(planner.settings, fixedBlocks);
-    const interval = intervals.find((item) => item.end - item.start >= estimateMinutes);
-    const workStart = (planner.settings.workSegments && planner.settings.workSegments[0]?.start) || planner.settings.workStart || "09:00";
-    const start = interval ? toTime(interval.start) : workStart;
-    const end = toTime(toMinutes(start) + estimateMinutes);
-    addBlockDirectly({ type: "task", taskId: question.taskId, title: "", start, end });
-    setScheduleQuestions((qs) => qs.filter((q) => q.id !== question.id));
+    const task = planner.tasks.find((t) => t.id === question.taskId) || {
+      title: question.title,
+      estimateMinutes: question.estimateMinutes,
+    };
+    const minutes = Math.max(10, Number(task.estimateMinutes) || Number(question.estimateMinutes) || 30);
+    const name = task.title || question.title || "这个任务";
+    if (isTicketPurchaseTask(task.title) && !parseTimeInSentence(task.title)) {
+      setBlockDraft((draft) => ({ ...draft, type: "task", taskId: question.taskId, title: "" }));
+      setScheduleNotice({ text: `「${name}」标题里的时间更像车次/出发时间。已填好下方表单，请手动选你真正要执行的时间再添加。`, tone: "info" });
+      return;
+    }
+    const slot = findSlotForTask(task, planner.settings, todayBlocks, selectedDate);
+    if (slot && addBlockDirectly({ type: "task", taskId: question.taskId, title: "", start: slot.start, end: slot.end })) {
+      setScheduleQuestions((qs) => qs.filter((q) => q.id !== question.id));
+      setScheduleNotice({ text: `已把「${name}」放到 ${slot.start}–${slot.end}。`, tone: "info" });
+      return;
+    }
+    setBlockDraft((draft) => ({ ...draft, type: "task", taskId: question.taskId, title: "" }));
+    setScheduleNotice({
+      text: `今天剩余空档放不下「${name}」（需 ${minutes} 分钟连续时间）。可以：① 拆成更小的步骤分别安排；② 点「延期」改到其他日期；③ 先删掉或缩短当天某个时间块腾出连续时间。已填好下方表单，也可手动指定时间。`,
+      tone: "error",
+    });
   }
 
   function cancelEditingTask() {
@@ -3590,7 +3642,7 @@ function TodayView({
             <textarea
               value={todayAiReply}
               onChange={(event) => setTodayAiReply(event.target.value)}
-              placeholder="在这里回答 AI 的追问，例如：会议 15:00 开始；文档完成后需要提交；剩余时间优先推进方案修改。"
+              placeholder="回答 AI 的问题，或继续补充今天想推进的事。没有更多就回复「没有了」"
             />
             <div className="ai-followup-actions">
               <button className="secondary-action" disabled={!todayAiReply.trim()}>
@@ -3961,59 +4013,60 @@ function TodayView({
         </form>
 
         {scheduleNotice.text && (
-          <div className={`schedule-notice ${scheduleNotice.tone === "error" ? "is-error" : "is-info"}`}>
+          <div className={`schedule-notice ${scheduleNotice.tone === "error" ? "is-error" : "is-info"}`} role="status">
             <span>{scheduleNotice.text}</span>
-            <button className="icon-button" onClick={() => setScheduleNotice({ text: "", tone: "" })} aria-label="关闭">
-              <X size={16} />
+            <button
+              type="button"
+              className="schedule-notice-close"
+              aria-label="关闭提示"
+              onClick={() => setScheduleNotice({ text: "", tone: "" })}
+            >
+              ×
             </button>
           </div>
         )}
 
         {schedulePreview && (
           <div className="schedule-preview">
-            <div className="schedule-preview-header">
-              <strong>排期预览</strong>
-              <span>
-                {schedulePreview.addedTaskCount ? `已从固定安排自动生成 ${schedulePreview.addedTaskCount} 个任务；` : ""}
-                {schedulePreview.message}
-              </span>
+            <div className="schedule-preview-head">
+              <strong>排期预览（未应用）</strong>
+              <span>确认后才会改动你的时间轴。</span>
             </div>
             <ul className="schedule-preview-list">
-              {schedulePreview.blocks
+              {[...schedulePreview.blocks]
                 .filter((block) => block.date === selectedDate)
                 .sort((a, b) => toMinutes(a.start) - toMinutes(b.start))
-                .map((block) => (
-                  <li key={block.id}>
-                    <span className="schedule-preview-time">
-                      {block.start} – {block.end}
-                    </span>
-                    <span className="schedule-preview-title">
-                      {block.type === "busy" ? `🚫 ${block.title || "不可用"}` : taskById[block.taskId]?.title || block.title || "未命名"}
-                    </span>
-                  </li>
-                ))}
+                .map((block) => {
+                  const previewTask = schedulePreview.tasks.find((task) => task.id === block.taskId);
+                  const name = previewTask?.title || block.title || (block.type === "busy" ? "固定占用" : "任务");
+                  return (
+                    <li key={block.id} className={block.type === "busy" ? "busy" : ""}>
+                      <span className="preview-time">{block.start}–{block.end}</span>
+                      <span className="preview-name">{name}</span>
+                    </li>
+                  );
+                })}
             </ul>
+            <div className="schedule-preview-meta">
+              {schedulePreview.addedTaskCount ? `新增 ${schedulePreview.addedTaskCount} 个任务 · ` : ""}
+              {schedulePreview.questions?.length ? `${schedulePreview.questions.length} 项需你判断（应用后在下方处理）` : "全部已排入"}
+            </div>
             <div className="schedule-preview-actions">
               <button className="primary-action" onClick={confirmSchedulePreview}>
                 <CheckCircle2 size={18} />
-                确认并应用
+                确认应用
               </button>
               <button className="secondary-action" onClick={cancelSchedulePreview}>
-                <X size={18} />
                 取消
               </button>
             </div>
           </div>
         )}
 
-        {scheduleUndo && (
+        {scheduleUndo && !schedulePreview && (
           <div className="schedule-undo">
-            <CheckCircle2 size={18} />
-            <span>已应用自动安排</span>
-            <button className="secondary-action" onClick={undoSchedule}>
-              <Undo2 size={16} />
-              撤销
-            </button>
+            <span>已应用自动安排。</span>
+            <button className="secondary-action" onClick={undoSchedule}>撤销自动安排</button>
           </div>
         )}
 
