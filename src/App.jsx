@@ -17,7 +17,6 @@ import {
   Target,
   Trash2,
   Upload,
-  Undo2,
   Wand2,
   X,
 } from "lucide-react";
