@@ -3422,15 +3422,6 @@ function App() {
   );
 }
 
-function getGuideQuestion({ dayPlan, todayTasks, todayBlocks, plannedMinutes, workMinutes }) {
-  if (!dayPlan.morningDone) return "今天最值得推进的 1-3 件事是什么？";
-  if (todayTasks.length === 0) return "先把今天的新任务收进来。";
-  if (plannedMinutes > workMinutes) return "今天任务超载了，要删减、顺延还是降低标准？";
-  if (todayBlocks.length === 0) return "把任务放进时间块，今天会更稳。";
-  if (dayPlan.changes?.trim()) return "这些变化会影响本周或本月计划吗？";
-  return "按当前节奏推进，晚上做一次轻复盘。";
-}
-
 function TodayView({
   planner,
   dayPlan,
