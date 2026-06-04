@@ -14,5 +14,7 @@ yarn-error.log*
 pnpm-debug.log*
 null
 startup.bat
+startup.sh
+scripts/
 .playwright-mcp/
 test-results/
