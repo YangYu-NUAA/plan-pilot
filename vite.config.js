@@ -22,7 +22,7 @@ function readJson(filePath) {
       return JSON.parse(fs.readFileSync(filePath, "utf-8"));
     }
   } catch (e) {
-    console.warn("readJson: failed to parse", filePath, e.message || e);
+    console.warn("readJson: failed to parse", filePath, e.message || e); // from PR #6 (hrjtju)
   }
   return null;
 }
@@ -421,7 +421,7 @@ async function callOpenAiCompatible(payload, apiKey) {
     });
     return response;
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timer); // 保证超时定时器一定清理（fetch 抛错也不残留）—— from PR #6 (hrjtju)
   }
 }
 
@@ -481,12 +481,13 @@ async function callAnthropic(payload, apiKey) {
       text: async () => output,
     };
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timer); // from PR #6 (hrjtju)
   }
 }
 
 function dataProxy() {
   const handler = async (req, res, next) => {
+    // 按 pathname 路由（剥离 query），避免带 ?query 时精确匹配失配 —— from PR #6 (hrjtju)
     const pathname = new URL(req.url, "http://localhost").pathname;
     // data API routes
     if (pathname === "/api/data") {

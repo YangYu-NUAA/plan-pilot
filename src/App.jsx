@@ -13,6 +13,7 @@ import {
   RefreshCw,
   SkipForward,
   Send,
+  Settings,
   Sparkles,
   Target,
   Trash2,
@@ -20,7 +21,21 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { TODAY_GUIDE_SYSTEM_PROMPT, planningCoachSystemMessages, planningCoachStartMessage } from "./planningSkill.js";
+import {
+  planningCoachStartMessage,
+  planningCoachSystemMessages,
+  TODAY_GUIDE_SYSTEM_PROMPT,
+} from "./planningSkill.js";
+import {
+  normalizeSentence,
+  isBusySentence,
+  isMeetingSentence,
+  isPostMeetingTask,
+  isTicketPurchaseTask,
+  looksLikeSingleActionItem,
+  pinnableTimeForTitle,
+} from "./planningSemantics.js";
+import { tryExtractJson } from "./jsonExtract.js";
 
 const APP_NAME = "计划引航";
 const APP_SHORT_NAME = "引航";
@@ -376,30 +391,7 @@ function makeBreakdown(goal, draft, selectedDate) {
   ];
 }
 
-function extractJson(content) {
-  const text = String(content || "").trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced?.[1] || text;
-
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const start = candidate.indexOf("{");
-    const end = candidate.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1));
-    }
-    throw new Error("AI 返回内容不是有效 JSON。");
-  }
-}
-
-function tryExtractJson(content) {
-  try {
-    return extractJson(content);
-  } catch {
-    return null;
-  }
-}
+// JSON 解析加固抽到纯模块 src/jsonExtract.js（便于单测），见 test/jsonExtract.test.mjs。
 
 function normalizePriority(priority) {
   return ["high", "medium", "low"].includes(priority) ? priority : "medium";
@@ -461,7 +453,10 @@ function normalizeBreakdownItems(items, goal, selectedDate) {
 function normalizeTaskSuggestions(items, selectedDate) {
   return (Array.isArray(items) ? items : [])
     .map((item) => {
-      const start = /^\d{2}:\d{2}$/.test(item.start) ? item.start : parseTimeInSentence(item.title || "");
+      // 显式 start 字段是「执行时间」（用户/模型主动指定，例如把买票放在 16:00），直接信任、钉成固定块；
+      // 只有「从标题解析出的时间」才过购票守卫——避免把车次/出发时间误当执行时间（修复购票任务给了时间仍被追问）。
+      const explicitStart = /^\d{2}:\d{2}$/.test(item.start) ? item.start : "";
+      const start = explicitStart || pinnableTimeForTitle(item.title, parseTimeInSentence(item.title || ""));
       return {
         id: uid("suggestion"),
         title: String(item.title || "").trim(),
@@ -820,23 +815,7 @@ function defaultBusyDuration(sentence) {
   return 60;
 }
 
-function isBusySentence(sentence) {
-  if (/购买|买票|订票|预订|查票|抢票/.test(sentence)) return false;
-  return /会议|开会|开[^，。；;\n]{1,24}会|课题会|组会|例会|研讨会|讨论|探讨|汇报|会谈|监考|考试|上课|答辩|面试|出发|前往|返回|通勤|火车|高铁|航班|去|外出|办事|接人|送|医院|体检|银行|办理|聚餐|午饭|午休|休息|赴|参观|出差|请假/.test(sentence);
-}
-
-function isMeetingSentence(sentence) {
-  if (/购买|买票|订票|预订|查票|抢票/.test(sentence)) return false;
-  return /会议|开会|开[^，。；;\n]{1,24}会|课题会|组会|例会|研讨会|讨论|探讨|汇报|会谈/.test(sentence);
-}
-
-function isPostMeetingTask(title) {
-  return /整理|总结|纪要|复盘|行动项|后续|待办|要点/.test(title) && /会|会议|课题|讨论|探讨|汇报|组会|研讨/.test(title);
-}
-
-function isTicketPurchaseTask(title) {
-  return /购买|买票|订票|预订|查票|抢票/.test(String(title || "")) && /票|火车|高铁|车次|航班/.test(String(title || ""));
-}
+// 句子分类、抽取闸门、购票时间守卫已移至 ./planningSemantics.js（可被 node --test 独立测试）。
 
 function hasSharedPlanningObject(a, b) {
   const left = String(a || "");
@@ -896,13 +875,6 @@ function meetingEndForTask(taskTitle, blocks) {
   const related = meetingBlocks.filter((block) => hasSharedPlanningObject(title, block.title));
 
   return Math.max(...(related.length ? related : meetingBlocks).map((block) => toMinutes(block.end)));
-}
-
-function normalizeSentence(sentence) {
-  return String(sentence || "")
-    .replace(/\s+/g, " ")
-    .replace(/^[，。；;、\s]+|[，。；;、\s]+$/g, "")
-    .trim();
 }
 
 function parseChineseNumber(value) {
@@ -1107,7 +1079,9 @@ function extractActionTasksFromText(text, date, existingTasks = []) {
     .map(normalizeSentence)
     .filter((s) => isMorningActionSentence(s) && looksLikeSingleActionItem(s))
     .map((sentence) => {
-      const start = parseTimeInSentence(sentence);
+      // 动作型句子若带明确时钟时间，视为「固定时间任务」，排期时钉到该时间点；否则为浮动任务，填充空档。
+      // 购票任务除外：标题里的时间是车次/出发时间，不能据此钉定执行时间（pinnableTimeForTitle 会返回空）。
+      const start = pinnableTimeForTitle(sentence, parseTimeInSentence(sentence));
       return {
         id: uid("task"),
         title: sentence,
@@ -1129,32 +1103,73 @@ function extractActionTasksFromText(text, date, existingTasks = []) {
 }
 
 async function callPlanningAi({ ai, messages, maxTokens = 1800, json = true }) {
-  const response = await fetch("/api/ai/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      provider: ai.provider,
-      protocol: ai.protocol || "openai-compatible",
-      baseUrl: ai.baseUrl,
-      model: ai.model,
-      apiKey: ai.apiKey || readLocalAiKey() || undefined,
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.2,
-      response_format: json ? { type: "json_object" } : undefined,
-      thinking: { type: "disabled" },
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error?.message || data.error || "AI 调用失败。");
+  // 推理型模型（step-3.7-flash 等）会把 token 预算先花在「思考」(message.reasoning) 上，
+  // 预算太小会在写正文前就被 finish_reason=length 截断、content 为空。
+  // 所以 JSON 模式给一个较高的下限，保证「想完还能把 JSON 写出来」。非推理模型用不满，不会涨成本。
+  const effectiveMax = json ? Math.max(maxTokens, 5000) : maxTokens;
+  // 单次调用：jsonMode=是否启用严格 json_object（弱模型常因此返回空）；extra=追加的纠正消息
+  async function once(jsonMode, extra) {
+    const response = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: ai.provider,
+        protocol: ai.protocol || "openai-compatible",
+        baseUrl: ai.baseUrl,
+        model: ai.model,
+        apiKey: ai.apiKey || readLocalAiKey() || undefined,
+        messages: extra ? messages.concat(extra) : messages,
+        max_tokens: effectiveMax,
+        temperature: 0.2,
+        ...(jsonMode && json ? { response_format: { type: "json_object" } } : {}),
+        ...(ai.provider === "deepseek" ? { thinking: { type: "disabled" } } : {}),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error?.message || data.error || "AI 调用失败。");
+    const top = data.choices?.[0] || {};
+    const choice = top.message || {};
+    let content = choice.content ?? choice.reasoning_content ?? "";
+    if (Array.isArray(content)) {
+      content = content.map((part) => (typeof part === "string" ? part : part?.text || "")).join("");
+    }
+    content = String(content || "").trim();
+    // 推理模型把预算用光、还没写正文：给出准确报错，而不是误判成「JSON 格式错误」
+    if (!content && top.finish_reason === "length") {
+      throw new Error("模型把 token 预算都用在思考上、正文被截断（finish_reason=length）。请调大 max_tokens，或在模型侧关闭推理模式。");
+    }
+    return content;
   }
 
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("AI 没有返回可用内容。");
-  if (json) return extractJson(content);
-  return tryExtractJson(content) || { message: content, items: [] };
+  if (!json) {
+    const content = await once(false);
+    return tryExtractJson(content) || { message: content, items: [] };
+  }
+
+  // JSON 模式：生成 → 校验 → 修复，逐步降级，最多 3 次，让弱模型也能稳定吐 JSON
+  const tries = [
+    () => once(true),
+    () => once(false, [{ role: "user", content: "请只返回一个 JSON 对象：不要 Markdown 代码块、不要任何解释或前后缀，必须以 { 开头、以 } 结尾。" }]),
+    () => once(false, [{ role: "user", content: "上一条没有给出合法 JSON。现在只输出修正后的纯 JSON 对象，开头是 {、结尾是 }，其余一律不要。" }]),
+  ];
+  let lastError = null;
+  for (const run of tries) {
+    let content = "";
+    try {
+      content = await run();
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+    if (!content) {
+      lastError = new Error("AI 没有返回可用内容。");
+      continue;
+    }
+    const parsed = tryExtractJson(content);
+    if (parsed) return parsed;
+    lastError = new Error("AI 返回的不是有效 JSON。");
+  }
+  throw new Error(`${lastError?.message || "AI 调用失败"}（已自动重试，仍未拿到可用 JSON；可换更稳的模型如 DeepSeek）。`);
 }
 
 function usePlannerStore() {
@@ -1229,7 +1244,7 @@ function usePlannerStore() {
         body: JSON.stringify(state),
       }).catch(() => {});
     }, 2000);
-    return () => clearTimeout(saveTimer.current);
+    return () => clearTimeout(saveTimer.current); // 卸载/重渲染时清理待写定时器 —— from PR #6 (hrjtju)
   }, [state, loaded]);
 
   return [state, setState];
@@ -1731,9 +1746,14 @@ function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate }) {
 
 function App() {
   const [planner, setPlanner] = usePlannerStore();
+  const autoSchedulingRef = useRef(false); // 防自动安排并发（每实例，替代模块全局）—— from PR #6 (hrjtju)
   const [localAiKey, setLocalAiKey] = useState(readLocalAiKey);
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
   const [activeView, setActiveView] = useState("today");
+  const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-theme") || "warm"; } catch { return "warm"; }
+  });
   const [selectedDate, setSelectedDate] = useState(getLocalDate());
   const [taskDraft, setTaskDraft] = useState({
     title: "",
@@ -1804,6 +1824,29 @@ function App() {
     setTodayGuideActive(false);
     setScheduleNotice({ text: "", tone: "" });
   }, [selectedDate]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem("plan-pilot-theme", theme); } catch (e) { /* ignore */ }
+  }, [theme]);
+
+  // 跨天滚动 + 「现在」线随时间移动：每 30s 检查一次本地日期。
+  // 跨过午夜时，若用户仍停留在「旧的今天」，自动把视图滚到新的一天（时间线回到顶部）；手动切到别的日期则不打扰。
+  // setNowTick 仅用于触发重渲染，让 DayTimeline 里 new Date() 计算的「现在」线实时移动、并在午夜归零。
+  const todayRef = useRef(getLocalDate());
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const today = getLocalDate();
+      const prevToday = todayRef.current;
+      if (today !== prevToday) {
+        setSelectedDate((cur) => (cur === prevToday ? today : cur));
+        todayRef.current = today;
+      }
+      setNowTick((n) => (n + 1) % 100000);
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     fetch("/api/ai/status")
@@ -1896,14 +1939,10 @@ function App() {
   function syncExplicitBusyBlocks(contextText) {
     const recoveredBlocks = recoverBusyBlocksFromPlanningContext(contextText, selectedDate, planner.blocks);
     if (!recoveredBlocks.length) return planner.blocks;
-
-    patchPlanner((current) => ({
-      blocks: mergeUniqueBusyBlocks(
-        current.blocks,
-        recoverBusyBlocksFromPlanningContext(contextText, selectedDate, current.blocks),
-      ),
-    }));
-    return mergeUniqueBusyBlocks(planner.blocks, recoveredBlocks);
+    // 落盘与返回使用同一份合并结果，避免「updater 用 current、返回用闭包」两次独立计算导致 AI 拿到旧时间块。
+    const merged = mergeUniqueBusyBlocks(planner.blocks, recoveredBlocks);
+    patchPlanner({ blocks: merged });
+    return merged;
   }
 
   function currentDayPlanText() {
@@ -2400,6 +2439,132 @@ function App() {
     return true;
   }
 
+  // 拖拽重排：被拖块放到落点（几乎可放任意时间，含非工作时段/午休——这是用户手动决定）；
+  // 只有撞到「不可用 / 固定时间」块才弹回。原本在它下方、且现在会冲突的任务块温和顺延（跳过硬锚点）。永不删块。
+  function applyDragReschedule(blockId, newStartMin, newEndMin) {
+    const date = selectedDate;
+    const moved = planner.blocks.find((b) => b.id === blockId);
+    if (!moved) return false;
+    const origStart = toMinutes(moved.start);
+    let startMin;
+    let endMin;
+    if (newStartMin !== origStart) {
+      // 移动：保持时长，整体限制在 00:00–24:00
+      const dur = Math.max(10, newEndMin - newStartMin);
+      startMin = Math.max(0, Math.min(newStartMin, 1440 - dur));
+      endMin = startMin + dur;
+    } else {
+      // 拉伸：固定开始，结束封顶 24:00
+      startMin = origStart;
+      endMin = Math.max(startMin + 10, Math.min(newEndMin, 1440));
+    }
+    const ns = startMin;
+    const dur0 = endMin - startMin;
+    const movedNew = { ...moved, start: toTime(startMin), end: toTime(endMin), auto: false }; // 手动拖动后视为手动放置
+    const today = planner.blocks.filter((b) => b.date === date);
+    const others = planner.blocks.filter((b) => b.date !== date);
+    // 硬锚点：不可用块 + 固定时间任务块（不能重叠）
+    const hard = today.filter((b) => b.id !== blockId && (b.type === "busy" || b.fixedTime));
+    if (hard.some((a) => overlapsAny(movedNew, [a]))) {
+      setScheduleNotice({ text: "这里是不可用 / 固定时间安排，不能放在它上面，已弹回。", tone: "error" });
+      return false;
+    }
+    const hardIv = hard.map((a) => [toMinutes(a.start), toMinutes(a.end)]);
+    const pushPastHard = (start, dur) => {
+      let s = start;
+      let again = true;
+      while (again) {
+        again = false;
+        for (const [hs, he] of hardIv) {
+          if (s < he && s + dur > hs) {
+            s = he;
+            again = true;
+          }
+        }
+      }
+      return s;
+    };
+    // 可顺延：当天其它任务块（非不可用、非固定时间），按开始排序
+    const movable = today
+      .filter((b) => b.id !== blockId && b.type !== "busy" && !b.fixedTime)
+      .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+    const movedOrigStart = toMinutes(moved.start);
+    let cursor = ns + dur0;
+    const newMovable = movable.map((b) => {
+      const bs = toMinutes(b.start);
+      const bdur = duration(b.start, b.end);
+      if (bs >= movedOrigStart && bs < cursor) {
+        const s = pushPastHard(cursor, bdur);
+        if (s + bdur <= 1440) {
+          cursor = s + bdur;
+          return { ...b, start: toTime(s), end: toTime(s + bdur) };
+        }
+        return b; // 顺延会超过 24:00 → 保持原位，不推到 25 点
+      }
+      if (bs >= movedOrigStart) cursor = Math.max(cursor, bs + bdur);
+      return b;
+    });
+    patchPlanner({ blocks: others.concat(hard, [movedNew], newMovable) });
+    setScheduleNotice({ text: "已移动；下方冲突的任务已联动顺延。", tone: "info" });
+    return true;
+  }
+
+  // 把右侧待办任务拖到时间轴落点：已在轴上则按拖拽重排移动（含联动顺延）；否则在落点新建手动块（auto:false）。
+  // 与拖拽一致：几乎可放任意时间，只有撞「不可用 / 固定时间」才拒绝；落点夹在 00:00–24:00 内。
+  function scheduleTaskAtMinute(taskId, startMin) {
+    const task = planner.tasks.find((t) => t.id === taskId);
+    if (!task) return false;
+    const today = planner.blocks.filter((b) => b.date === selectedDate);
+    const existing = today.find((b) => b.taskId === taskId && b.type !== "busy");
+    if (existing) {
+      return applyDragReschedule(existing.id, startMin, startMin + duration(existing.start, existing.end));
+    }
+    const estimate = Math.max(10, estimateMinutesForTitle(task.title, Number(task.estimateMinutes) || 30));
+    const start = Math.max(0, Math.min(startMin, 1440 - estimate));
+    const end = start + estimate;
+    const candidate = { start: toTime(start), end: toTime(end) };
+    // 硬锚点：不可用块 + 固定时间块，不能压上去
+    const hard = today.filter((b) => b.type === "busy" || b.fixedTime);
+    if (hard.some((a) => overlapsAny(candidate, [a]))) {
+      setScheduleNotice({ text: `「${task.title}」放到 ${toTime(start)} 会和不可用 / 固定时间冲突，换个空档再放。`, tone: "error" });
+      return false;
+    }
+    // 温和顺延：落点处及其下方、与新块冲突的可动块依次下移（跳过硬锚点、封顶 24:00），不删块、不视觉重叠。
+    const hardIv = hard.map((a) => [toMinutes(a.start), toMinutes(a.end)]);
+    const pushPastHard = (s, dur) => {
+      let cur = s;
+      let again = true;
+      while (again) {
+        again = false;
+        for (const [hs, he] of hardIv) {
+          if (cur < he && cur + dur > hs) { cur = he; again = true; }
+        }
+      }
+      return cur;
+    };
+    const movable = today
+      .filter((b) => b.type !== "busy" && !b.fixedTime)
+      .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+    let cursor = end;
+    const newMovable = movable.map((b) => {
+      const bs = toMinutes(b.start);
+      const bdur = duration(b.start, b.end);
+      if (bs >= start && bs < cursor) {
+        const s = pushPastHard(cursor, bdur);
+        if (s + bdur <= 1440) { cursor = s + bdur; return { ...b, start: toTime(s), end: toTime(s + bdur) }; }
+        return b; // 顺延会超过 24:00 → 保持原位
+      }
+      if (bs >= start) cursor = Math.max(cursor, bs + bdur);
+      return b;
+    });
+    const block = { id: uid("block"), taskId, title: "", type: "task", date: selectedDate, start: toTime(start), end: toTime(end), auto: false };
+    const others = planner.blocks.filter((b) => b.date !== selectedDate);
+    patchPlanner({ blocks: others.concat(hard, newMovable, [block]) });
+    setScheduleQuestions((qs) => qs.filter((q) => q.taskId !== taskId));
+    setScheduleNotice({ text: `已把「${task.title}」安排到 ${toTime(start)}–${toTime(end)}（拖动可微调，下方冲突已顺延）。`, tone: "info" });
+    return true;
+  }
+
   function updateGoal(goalId, patch) {
     patchPlanner((current) => ({
       goals: current.goals.map((goal) => (goal.id === goalId ? { ...goal, ...patch } : goal)),
@@ -2516,7 +2681,7 @@ function App() {
     const followUpAnswer = typeof extraAnswer === "string" ? extraAnswer.trim() : "";
 
     if (!planner.ai.enabled) {
-      setAiStatus({ loading: false, error: "请先在左侧启用 AI。", message: "" });
+      setAiStatus({ loading: false, error: "请先在设置里启用 AI（点左侧齿轮）。", message: "" });
       return;
     }
 
@@ -2616,7 +2781,7 @@ function App() {
       setPlanningCoach((coach) => ({
         ...coach,
         loading: false,
-        error: "请先在左侧启用 AI。",
+        error: "请先在设置里启用 AI（点左侧齿轮）。",
       }));
       return;
     }
@@ -2980,33 +3145,58 @@ function App() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">
-            <Sparkles size={20} />
-          </span>
-          <div>
-            <strong>{APP_NAME}</strong>
-            <span>{formatHumanDate(getLocalDate())}</span>
-          </div>
-        </div>
-
-        <nav className="nav">
-          <button className={activeView === "today" ? "active" : ""} onClick={() => setActiveView("today")}>
-            <CalendarDays size={18} />
-            今日
+      <aside className="rail">
+        <span className="brand-mark" title={APP_NAME}>
+          <Sparkles size={20} />
+        </span>
+        <nav className="rail-nav">
+          <button className={activeView === "today" ? "active" : ""} title="今日" aria-label="今日" onClick={() => setActiveView("today")}>
+            <CalendarDays size={20} />
           </button>
-          <button className={activeView === "goals" ? "active" : ""} onClick={() => setActiveView("goals")}>
-            <Target size={18} />
-            目标
+          <button className={activeView === "goals" ? "active" : ""} title="目标" aria-label="目标" onClick={() => setActiveView("goals")}>
+            <Target size={20} />
           </button>
-          <button className={activeView === "review" ? "active" : ""} onClick={() => setActiveView("review")}>
-            <ListChecks size={18} />
-            复盘
+          <button className={activeView === "review" ? "active" : ""} title="复盘" aria-label="复盘" onClick={() => setActiveView("review")}>
+            <ListChecks size={20} />
           </button>
         </nav>
+        <button
+          className={`rail-settings ${settingsOpen ? "active" : ""}`}
+          title="设置"
+          aria-label="设置"
+          onClick={() => setSettingsOpen((open) => !open)}
+        >
+          <Settings size={20} />
+        </button>
+      </aside>
+
+      {settingsOpen && <div className="drawer-overlay" onClick={() => setSettingsOpen(false)} />}
+
+      <aside className={`settings-drawer ${settingsOpen ? "open" : ""}`} aria-hidden={!settingsOpen}>
+        <div className="drawer-head">
+          <div className="brand">
+            <span className="brand-mark">
+              <Sparkles size={18} />
+            </span>
+            <div>
+              <strong>{APP_NAME}</strong>
+              <span>{formatHumanDate(getLocalDate())}</span>
+            </div>
+          </div>
+          <button className="drawer-close" title="关闭" aria-label="关闭设置" onClick={() => setSettingsOpen(false)}>
+            <X size={18} />
+          </button>
+        </div>
 
         <section className="settings-panel">
+          <label className="theme-select" style={{ gridColumn: "1 / -1" }}>
+            外观主题
+            <select value={theme} onChange={(event) => setTheme(event.target.value)}>
+              <option value="warm">暖象牙（默认）</option>
+              <option value="cool">冷蓝清新</option>
+              <option value="graphite">墨灰</option>
+            </select>
+          </label>
           <div className="work-segments-label">工作时段</div>
           {(planner.settings.workSegments || []).map((seg) => (
             <div className="work-segment-item" key={`${seg.start}-${seg.end}`}>
@@ -3358,6 +3548,8 @@ function App() {
             addBlockDirectly={addBlockDirectly}
             deleteBlock={deleteBlock}
             updateBlock={updateBlock}
+            applyDragReschedule={applyDragReschedule}
+            scheduleTaskAtMinute={scheduleTaskAtMinute}
             aiStatus={aiStatus}
             aiTaskSuggestions={aiTaskSuggestions}
             generateTodayAiGuide={generateTodayAiGuide}
@@ -3422,6 +3614,174 @@ function App() {
   );
 }
 
+function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete }) {
+  const PXH = 56; // 每小时像素
+  const ppm = PXH / 60;
+  const segs = settings.workSegments || [];
+  const hasContent = segs.length > 0 || blocks.length > 0; // 是否有可显示内容（否则给空态提示）
+  const [drag, setDrag] = useState(null); // { id, mode:"move"|"resize", startY, origStart, origEnd, deltaMin }
+  const rootRef = useRef(null); // 容器，用于把落点 clientY 换算成分钟
+  const [dropMin, setDropMin] = useState(null); // 外部任务拖入时的落点指示（分钟）
+
+  useEffect(() => {
+    if (!drag) return undefined;
+    function onMove(e) {
+      const deltaMin = Math.round((e.clientY - drag.startY) / ppm / 5) * 5; // 吸附 5 分钟
+      setDrag((d) => (d ? { ...d, deltaMin } : d));
+    }
+    function onUp() {
+      setDrag((d) => {
+        if (d && d.deltaMin) {
+          const dur = d.origEnd - d.origStart;
+          if (d.mode === "resize") {
+            onReschedule(d.id, d.origStart, Math.max(d.origStart + 15, d.origEnd + d.deltaMin));
+          } else {
+            onReschedule(d.id, d.origStart + d.deltaMin, d.origStart + d.deltaMin + dur);
+          }
+        }
+        return null;
+      });
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [drag?.id, drag?.mode]);
+
+  // 全天 0–24 较高、容器内部滚动；切换日期/进入时自动定位到「现在」（非今天则定位到首个块/工作开始），
+  // 让关注点上方留约 1 小时，避免一进来停在凌晨空白区。
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const now = new Date();
+    const focusMin =
+      selectedDate === getLocalDate()
+        ? now.getHours() * 60 + now.getMinutes()
+        : blocks.length
+          ? Math.min(...blocks.map((b) => toMinutes(b.start)))
+          : segs[0]
+            ? toMinutes(segs[0].start)
+            : 8 * 60;
+    el.scrollTop = Math.max(0, (focusMin - 60) * ppm);
+  }, [selectedDate]);
+
+  if (!hasContent) {
+    return <EmptyState icon={<Clock3 size={22} />} text="还没有时间块。先在设置里配置工作时段，或在上面加任务后点自动安排。" />;
+  }
+  // 固定显示完整一天 00:00–24:00：小时标签 0–23（最后一格 23:00），容器高度铺到 24:00，
+  // 这样「现在」线在任何时刻（含 23:xx）都落在范围内、不会越出底部看不见。
+  const dayStart = 0;
+  const dayEnd = 1440;
+  const totalMin = dayEnd - dayStart;
+  const hours = [];
+  for (let m = dayStart; m < dayEnd; m += 60) hours.push(m);
+  const nowDate = new Date();
+  const nowMin = selectedDate === getLocalDate() ? nowDate.getHours() * 60 + nowDate.getMinutes() : null;
+
+  function startDrag(e, block, mode) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    setDrag({ id: block.id, mode, startY: e.clientY, origStart: toMinutes(block.start), origEnd: toMinutes(block.end), deltaMin: 0 });
+  }
+
+  // 把落点 clientY 换算成分钟（减去顶部 8px padding，吸附 5 分钟，夹在当天范围内）
+  function yToMinute(clientY) {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return dayStart;
+    const m = dayStart + (clientY - rect.top - 8) / ppm;
+    return Math.max(dayStart, Math.min(dayEnd, Math.round(m / 5) * 5));
+  }
+  function onDragOverTimeline(e) {
+    if (!onDropTask) return;
+    e.preventDefault(); // 必须 preventDefault 才能触发 drop
+    e.dataTransfer.dropEffect = "copy";
+    setDropMin(yToMinute(e.clientY));
+  }
+  function onDropTimeline(e) {
+    if (!onDropTask) return;
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("text/plain");
+    const minute = yToMinute(e.clientY);
+    setDropMin(null);
+    if (taskId) onDropTask(taskId, minute);
+  }
+
+  return (
+    <div
+      className="day-timeline"
+      ref={rootRef}
+      style={{ height: totalMin * ppm + 18 }}
+      onDragOver={onDragOverTimeline}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDropMin(null); }}
+      onDrop={onDropTimeline}
+    >
+      {hours.map((m) => (
+        <div className="dt-hour" key={m} style={{ top: (m - dayStart) * ppm + 8 }}>
+          <span>{toTime(m)}</span>
+        </div>
+      ))}
+      {blocks.map((block) => {
+        const task = taskById[block.taskId];
+        const busy = block.type === "busy" || (!block.taskId && !block.auto);
+        const title = task?.title || block.title || (busy ? "固定占用" : "自定义安排");
+        const isDragging = drag?.id === block.id;
+        const dMove = isDragging && drag.mode === "move" ? drag.deltaMin : 0;
+        const dResize = isDragging && drag.mode === "resize" ? drag.deltaMin : 0;
+        const startMin = toMinutes(block.start) + dMove;
+        const endMin = toMinutes(block.end) + dMove + dResize;
+        const top = (startMin - dayStart) * ppm + 8;
+        const h = Math.max(30, (endMin - startMin) * ppm);
+        let cls = "deep";
+        if (busy) cls = isMeetingSentence(title) ? "meet" : "busy";
+        else if (task?.kind === "fixed") cls = "meet";
+        return (
+          <article
+            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}`}
+            key={block.id}
+            style={{ top, height: h }}
+            onPointerDown={(e) => startDrag(e, block, "move")}
+          >
+            <div className="dt-body">
+              <div className="dt-bt">{title}</div>
+              <div className="dt-bm">
+                {toTime(startMin)}–{toTime(endMin)} · {endMin - startMin}分钟
+                {busy ? " · 不可用" : block.auto ? " · 自动" : ""}
+              </div>
+            </div>
+            <div className="dt-actions">
+              <button title="编辑" onPointerDown={(e) => e.stopPropagation()} onClick={() => onEdit(block)}>
+                <Pencil size={14} />
+              </button>
+              <button title="删除" onPointerDown={(e) => e.stopPropagation()} onClick={() => onDelete(block.id)}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <div
+              className="dt-resize"
+              title="拖动改时长"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                startDrag(e, block, "resize");
+              }}
+            />
+          </article>
+        );
+      })}
+      {nowMin != null && nowMin >= dayStart && nowMin <= dayEnd && (
+        <div className="dt-now" style={{ top: (nowMin - dayStart) * ppm + 8 }}>
+          <b>现在 {toTime(nowMin)}</b>
+        </div>
+      )}
+      {dropMin != null && (
+        <div className="dt-drop" style={{ top: (dropMin - dayStart) * ppm + 8 }}>
+          <b>放到 {toTime(dropMin)}</b>
+        </div>
+      )}
+    </div>
+  );
+}
 function TodayView({
   planner,
   dayPlan,
@@ -3455,6 +3815,8 @@ function TodayView({
   addBlockDirectly,
   deleteBlock,
   updateBlock,
+  applyDragReschedule,
+  scheduleTaskAtMinute,
   aiStatus,
   aiTaskSuggestions,
   generateTodayAiGuide,
@@ -3485,6 +3847,15 @@ function TodayView({
       .slice(0, 2),
     [planner.tasks, selectedDate],
   );
+  // 逾期未完成：早于当前日期、仍未完成的任务（否则它们会从「今日」视图里彻底消失、被遗忘）
+  const overdueTasks = useMemo(() =>
+    planner.tasks
+      .filter((t) => t.date < selectedDate && t.status !== "done")
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : priorityOrder[b.priority] - priorityOrder[a.priority])),
+    [planner.tasks, selectedDate],
+  );
+  const [deferringTaskId, setDeferringTaskId] = useState(null);
+  const [deferTaskDate, setDeferTaskDate] = useState("");
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editDraft, setEditDraft] = useState({ title: "", estimateMinutes: 60, priority: "medium", goalId: "" });
   const [editingBlockId, setEditingBlockId] = useState(null);
@@ -3566,10 +3937,8 @@ function TodayView({
     setEditingTaskId(null);
   }
 
-  const layoutClass = dayPlan.morningDone ? "today-grid layout-done" : "today-grid";
-
   return (
-    <div className={layoutClass}>
+    <div className="cockpit-grid">
       <section className="coach-band">
         <div className="coach-copy">
           <div>
@@ -3807,6 +4176,57 @@ function TodayView({
         </form>
 
         <div className="task-list">
+          {overdueTasks.length > 0 && (
+            <div className="overdue-zone">
+              <div className="overdue-head">
+                <Clock3 size={14} />
+                逾期未完成 · {overdueTasks.length}
+              </div>
+              {overdueTasks.map((task) => (
+                <article className="overdue-item" key={task.id}>
+                  <div className="overdue-main">
+                    <strong>{task.title}</strong>
+                    <span className="overdue-meta">
+                      原定 {formatShortDate(task.date)} · {priorityLabel[task.priority]} · {task.estimateMinutes} 分钟
+                    </span>
+                  </div>
+                  <div className="overdue-actions">
+                    <button className="icon-button solid" title="顺延到今天" onClick={() => deferTaskTo(task.id, selectedDate)}>
+                      <Plus size={16} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="改到指定日期"
+                      onClick={() => {
+                        setDeferringTaskId((id) => (id === task.id ? null : task.id));
+                        setDeferTaskDate(addDays(selectedDate, 1));
+                      }}
+                    >
+                      <CalendarDays size={16} />
+                    </button>
+                    <button className="icon-button danger" title="删除任务" onClick={() => deleteTask(task.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  {deferringTaskId === task.id && (
+                    <div className="defer-picker">
+                      <input type="date" value={deferTaskDate} onChange={(e) => setDeferTaskDate(e.target.value)} />
+                      <button
+                        className="primary-action"
+                        onClick={() => {
+                          if (deferTaskDate) deferTaskTo(task.id, deferTaskDate);
+                          setDeferringTaskId(null);
+                        }}
+                      >
+                        确认
+                      </button>
+                      <button className="secondary-action" onClick={() => setDeferringTaskId(null)}>取消</button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
           {todayTasks.length === 0 && <EmptyState icon={<Target size={22} />} text="先写下今天的一件具体工作。" />}
           {todayTasks
             .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
@@ -3869,7 +4289,16 @@ function TodayView({
               }
 
               return (
-              <article className={`task-item ${task.status === "done" ? "done" : ""}${task.kind === "fixed" ? " fixed" : ""}${task.kind !== "fixed" ? " priority-" + task.priority : ""}`} key={task.id}>
+              <article
+                className={`task-item is-draggable ${task.status === "done" ? "done" : ""}${task.kind === "fixed" ? " fixed" : ""}${task.kind !== "fixed" ? " priority-" + task.priority : ""}`}
+                key={task.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", task.id);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                title="拖到右侧时间轴可安排到具体时间"
+              >
                 <button
                   className="check-button"
                   title={task.status === "done" ? "标记未完成" : "标记完成"}
@@ -4113,92 +4542,34 @@ function TodayView({
           </div>
         )}
 
-        <div className="timeline">
-          {todayBlocks.length === 0 && <EmptyState icon={<Clock3 size={22} />} text="还没有时间块。" />}
-          {todayBlocks.map((block, bi) => {
-            const task = taskById[block.taskId];
-            const busy = block.type === "busy" || (!block.taskId && !block.auto);
-            const title = task?.title || block.title || (busy ? "固定占用" : "自定义安排");
-            const isEditing = editingBlockId === block.id;
-            const segs = planner.settings.workSegments || [];
-            const blockMid = toMinutes(block.start) + duration(block.start, block.end) / 2;
-            const curSegIdx = segs.findIndex((s) => blockMid >= toMinutes(s.start) && blockMid <= toMinutes(s.end));
-            let prevSegIdx = -1;
-            if (bi > 0) {
-              const prev = todayBlocks[bi - 1];
-              const prevMid = toMinutes(prev.start) + duration(prev.start, prev.end) / 2;
-              prevSegIdx = segs.findIndex((s) => prevMid >= toMinutes(s.start) && prevMid <= toMinutes(s.end));
-            }
-            const showDivider = prevSegIdx >= 0 && curSegIdx >= 0 && prevSegIdx !== curSegIdx;
+        {editingBlockId && (
+          <div className="dt-editbar">
+            <input type="time" lang="zh-CN" value={blockEditDraft.start}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, start: e.target.value }))} aria-label="开始时间" />
+            <input type="time" lang="zh-CN" value={blockEditDraft.end}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, end: e.target.value }))} aria-label="结束时间" />
+            <select value={blockEditDraft.type}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, type: e.target.value }))}>
+              <option value="task">任务</option>
+              <option value="busy">不可用</option>
+            </select>
+            <input className="dt-edit-title" value={blockEditDraft.title}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, title: e.target.value }))} placeholder="标题（可选）" />
+            <button className="btn-text" onClick={() => saveEditingBlock(editingBlockId)}>保存</button>
+            <button className="btn-text" onClick={cancelEditingBlock}>取消</button>
+          </div>
+        )}
 
-            if (isEditing) {
-              return (
-                <React.Fragment key={block.id}>
-                  {showDivider && (
-                    <div className="time-segment-divider">
-                      {segs[prevSegIdx].start}-{segs[prevSegIdx].end} ↑ {segs[curSegIdx].start}-{segs[curSegIdx].end} ↓
-                    </div>
-                  )}
-                  <article className="time-block editing">
-                    <div className="block-edit-form">
-                      <div className="block-edit-row">
-                        <input type="time" lang="zh-CN" value={blockEditDraft.start}
-                          onChange={(e) => setBlockEditDraft((d) => ({ ...d, start: e.target.value }))} aria-label="开始时间" />
-                        <input type="time" lang="zh-CN" value={blockEditDraft.end}
-                          onChange={(e) => setBlockEditDraft((d) => ({ ...d, end: e.target.value }))} aria-label="结束时间" />
-                        <select value={blockEditDraft.type}
-                          onChange={(e) => setBlockEditDraft((d) => ({ ...d, type: e.target.value }))}>
-                          <option value="task">任务</option>
-                          <option value="busy">不可用</option>
-                        </select>
-                      </div>
-                      <input value={blockEditDraft.title}
-                        onChange={(e) => setBlockEditDraft((d) => ({ ...d, title: e.target.value }))} placeholder="标题（可选）" />
-                      <div className="edit-task-actions">
-                        <button className="secondary-action" onClick={() => saveEditingBlock(block.id)}>保存</button>
-                        <button className="secondary-action" onClick={cancelEditingBlock}>取消</button>
-                      </div>
-                    </div>
-                  </article>
-                </React.Fragment>
-              );
-            }
-
-            let priorityClass = "";
-            if (busy || task?.kind === "fixed") { priorityClass = "tb-fixed"; }
-            else if (task) { priorityClass = `tb-${task.priority}`; }
-            else if (block.auto) { priorityClass = "tb-auto"; }
-
-            return (
-              <React.Fragment key={block.id}>
-                {showDivider && (
-                  <div className="time-segment-divider">
-                    {segs[prevSegIdx].start}-{segs[prevSegIdx].end} ↑ {segs[curSegIdx].start}-{segs[curSegIdx].end} ↓
-                  </div>
-                )}
-                <article className={`time-block ${priorityClass}`}>
-                  <div className="time-range">
-                    <strong>{block.start}</strong>
-                    <span>{block.end}</span>
-                  </div>
-                  <div className="time-body">
-                    <strong>{title}</strong>
-                    <span>
-                      {duration(block.start, block.end)} 分钟
-                      {busy ? " · 不可安排" : block.auto ? " · 自动" : ""}
-                    </span>
-                  </div>
-                  <button title="编辑时间块" className="icon-button" onClick={() => startEditingBlock(block)}>
-                    <Pencil size={17} />
-                  </button>
-                  <button title="删除时间块" className="icon-button danger" onClick={() => deleteBlock(block.id)}>
-                    <Trash2 size={17} />
-                  </button>
-                </article>
-              </React.Fragment>
-            );
-          })}
-        </div>
+        <DayTimeline
+          blocks={todayBlocks}
+          taskById={taskById}
+          settings={planner.settings}
+          selectedDate={selectedDate}
+          onReschedule={applyDragReschedule}
+          onDropTask={scheduleTaskAtMinute}
+          onEdit={startEditingBlock}
+          onDelete={deleteBlock}
+        />
       </section>
     </div>
   );
@@ -4382,107 +4753,125 @@ function GoalsView({
         )}
       </section>
 
-      <GoalGraph
+      <GoalGantt
         goals={goals}
+        tasks={tasks}
         goalById={goalById}
         updateGoal={updateGoal}
         deleteGoal={deleteGoal}
-        goalTypeLabel={goalTypeLabel}
-        TargetIcon={Target}
-        EmptyState={EmptyState}
       />
     </div>
   );
 }
 
-function buildGoalRows(goals) {
+// 两个 YYYY-MM-DD 的天数差（b - a），用 UTC 避免夏令时误差
+function dayDiff(a, b) {
+  const [ay, am, ad] = a.split("-").map(Number);
+  const [by, bm, bd] = b.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+
+// 甘特图数据：每个目标的时间跨度（优先取「该目标及其子目标」关联任务的日期范围，无任务则按类型从今天给默认区间），
+// 按层级深度优先排成有序行，并算出整体时间轴范围（左右各留 2 天）。
+function buildGoalGantt(goals, tasks, todayStr) {
   const childrenMap = {};
   goals.forEach((g) => {
-    if (g.parentId) {
-      if (!childrenMap[g.parentId]) childrenMap[g.parentId] = [];
-      childrenMap[g.parentId].push(g);
-    }
+    if (g.parentId) (childrenMap[g.parentId] = childrenMap[g.parentId] || []).push(g);
   });
+  const tasksByGoal = {};
+  tasks.forEach((t) => {
+    if (t.goalId) (tasksByGoal[t.goalId] = tasksByGoal[t.goalId] || []).push(t);
+  });
+  const goalMap = {};
+  goals.forEach((g) => { goalMap[g.id] = g; });
+  const HORIZON = { long: 84, month: 28, week: 7 };
+
+  // 进度联动：有子目标→取子目标进度均值；否则有关联任务→完成数/总数；都没有→用户手填的 goal.progress（可拖）。
+  // auto=true 表示由子项自动汇总，进度条只读、不让用户拖。
+  const progMemo = {};
+  function progressOf(goalId, visiting) {
+    if (progMemo[goalId]) return progMemo[goalId];
+    if (visiting.has(goalId)) return { value: 0, auto: false };
+    visiting.add(goalId);
+    const children = childrenMap[goalId] || [];
+    const gtasks = tasksByGoal[goalId] || [];
+    let info;
+    if (children.length) {
+      const sum = children.reduce((a, c) => a + progressOf(c.id, visiting).value, 0);
+      info = { value: Math.round(sum / children.length), auto: true, kind: "goals", count: children.length };
+    } else if (gtasks.length) {
+      const done = gtasks.filter((t) => t.status === "done").length;
+      info = { value: Math.round((done / gtasks.length) * 100), auto: true, kind: "tasks", count: gtasks.length };
+    } else {
+      info = { value: Math.max(0, Math.min(100, Number(goalMap[goalId] && goalMap[goalId].progress) || 0)), auto: false };
+    }
+    progMemo[goalId] = info;
+    return info;
+  }
+
+  // 跨度：自身关联任务 ∪ 各子目标的跨度（父目标自动包住子目标，长期目标不再空降 84 天）；
+  // 子树里有真实任务→实线(tasks)，否则虚线(type)；都没有→按类型给默认区间。
+  const spanMemo = {};
+  function spanOf(goalId, visiting) {
+    if (spanMemo[goalId]) return spanMemo[goalId];
+    if (visiting.has(goalId)) return null;
+    visiting.add(goalId);
+    const dates = [];
+    (tasksByGoal[goalId] || []).forEach((t) => { if (/^\d{4}-\d{2}-\d{2}$/.test(t.date)) dates.push(t.date); });
+    const childSpans = (childrenMap[goalId] || []).map((c) => spanOf(c.id, visiting)).filter(Boolean);
+    const starts = dates.concat(childSpans.map((s) => s.start));
+    const ends = dates.concat(childSpans.map((s) => s.end));
+    let info;
+    if (starts.length) {
+      let start = starts[0];
+      let end = ends[0];
+      starts.forEach((d) => { if (d < start) start = d; });
+      ends.forEach((d) => { if (d > end) end = d; });
+      const hasTasks = dates.length > 0 || childSpans.some((s) => s.derived === "tasks");
+      info = { start, end, derived: hasTasks ? "tasks" : "type" };
+    } else {
+      const type = (goalMap[goalId] && goalMap[goalId].type) || "month";
+      info = { start: todayStr, end: addDays(todayStr, HORIZON[type] || 28), derived: "type" };
+    }
+    spanMemo[goalId] = info;
+    return info;
+  }
 
   const rows = [];
   const placed = new Set();
-
-  function placeInRow(goal, rowIndex) {
+  function place(goal, depth) {
     if (placed.has(goal.id)) return;
-    while (rows.length <= rowIndex) rows.push({ long: [], month: [], week: [] });
-    rows[rowIndex][goal.type].push(goal);
     placed.add(goal.id);
-    (childrenMap[goal.id] || []).forEach((child) => placeInRow(child, rowIndex));
+    rows.push({ goal, depth, span: spanOf(goal.id, new Set()), prog: progressOf(goal.id, new Set()) });
+    (childrenMap[goal.id] || []).forEach((c) => place(c, depth + 1));
   }
+  goals.filter((g) => g.type === "long" && !g.parentId).forEach((g) => place(g, 0));
+  goals.filter((g) => g.type === "month" && !g.parentId).forEach((g) => place(g, 0));
+  goals.filter((g) => g.type === "week" && !g.parentId).forEach((g) => place(g, 0));
+  goals.forEach((g) => { if (!placed.has(g.id)) place(g, 0); });
 
-  // place long roots first — each root starts a new row group
-  const longRoots = goals.filter((g) => g.type === "long" && !g.parentId);
-  longRoots.forEach((root, i) => placeInRow(root, i));
-
-  // place remaining unplaced goals in new rows
-  goals.forEach((g) => {
-    if (!placed.has(g.id)) {
-      placeInRow(g, rows.length);
-    }
+  let min = null;
+  let max = null;
+  rows.forEach((r) => {
+    if (min === null || r.span.start < min) min = r.span.start;
+    if (max === null || r.span.end > max) max = r.span.end;
   });
-
-  return rows;
+  if (min === null) { min = todayStr; max = addDays(todayStr, 28); }
+  return { rows, min: addDays(min, -2), max: addDays(max, 2) };
 }
 
-function getConnectedIds(goalId, goals) {
-  const parentMap = {};
-  const childrenMap = {};
-  goals.forEach((g) => {
-    parentMap[g.id] = g.parentId;
-    if (g.parentId) {
-      if (!childrenMap[g.parentId]) childrenMap[g.parentId] = [];
-      childrenMap[g.parentId].push(g.id);
-    }
-  });
-
-  const connected = new Set([goalId]);
-
-  // walk up
-  let cursor = goalId;
-  while (parentMap[cursor]) {
-    connected.add(parentMap[cursor]);
-    cursor = parentMap[cursor];
-  }
-
-  // walk down
-  const stack = childrenMap[goalId] ? [...childrenMap[goalId]] : [];
-  while (stack.length) {
-    const id = stack.pop();
-    if (connected.has(id)) continue;
-    connected.add(id);
-    if (childrenMap[id]) stack.push(...childrenMap[id]);
-  }
-
-  return connected;
-}
-
-function GoalGraph({ goals, goalById, updateGoal, deleteGoal, goalTypeLabel, TargetIcon, EmptyState }) {
-  const graphRef = useRef(null);
-  const goalRefs = useRef(new Map());
-  const [hoveredGoalId, setHoveredGoalId] = useState(null);
-  const [lines, setLines] = useState([]);
+function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
   const [editingGoalId, setEditingGoalId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ title: "", priority: "medium", parentId: "" });
+  const [editDraft, setEditDraft] = useState({ title: "", type: "long", priority: "medium", parentId: "" });
+  const today = getLocalDate();
 
   function startEditingGoal(goal) {
     setEditingGoalId(goal.id);
-    setEditDraft({
-      title: goal.title,
-      type: goal.type,
-      priority: goal.priority,
-      parentId: goal.parentId || "",
-    });
+    setEditDraft({ title: goal.title, type: goal.type, priority: goal.priority, parentId: goal.parentId || "" });
   }
-
   function cancelEditingGoal() {
     setEditingGoalId(null);
   }
-
   function saveEditingGoal(goalId) {
     if (!editDraft.title.trim()) return;
     updateGoal(goalId, {
@@ -4493,263 +4882,167 @@ function GoalGraph({ goals, goalById, updateGoal, deleteGoal, goalTypeLabel, Tar
     });
     setEditingGoalId(null);
   }
-
-  function handleStatusChange(goal, newStatus) {
-    if (newStatus === "done") {
-      updateGoal(goal.id, { status: "done", progress: 100 });
-    } else {
-      updateGoal(goal.id, { status: newStatus });
-    }
+  function handleStatusChange(goal, status) {
+    if (status === "done") updateGoal(goal.id, { status: "done", progress: 100 });
+    else updateGoal(goal.id, { status });
   }
-
   function handleProgressChange(goal, value) {
     const progress = Number(value);
-    if (progress >= 100) {
-      updateGoal(goal.id, { progress: 100, status: "done" });
-    } else {
-      updateGoal(goal.id, { progress });
-    }
+    if (progress >= 100) updateGoal(goal.id, { progress: 100, status: "done" });
+    else updateGoal(goal.id, { progress });
   }
 
-  const rows = useMemo(() => buildGoalRows(goals), [goals]);
+  const { rows, min, max } = useMemo(() => buildGoalGantt(goals, tasks, today), [goals, tasks, today]);
+  const totalDays = Math.max(1, dayDiff(min, max));
+  const pct = (date) => Math.max(0, Math.min(100, (dayDiff(min, date) / totalDays) * 100));
+  const ticks = [];
+  for (let d = min; d <= max; d = addDays(d, 7)) ticks.push(d);
+  const showToday = today >= min && today <= max;
 
-  const connectedIds = useMemo(
-    () => (hoveredGoalId ? getConnectedIds(hoveredGoalId, goals) : new Set()),
-    [hoveredGoalId, goals],
-  );
-
-  const computeLines = useCallback(() => {
-    if (!graphRef.current) return;
-    const containerRect = graphRef.current.getBoundingClientRect();
-    const newLines = [];
-
-    goals.forEach((goal) => {
-      if (!goal.parentId) return;
-      const parentEl = goalRefs.current.get(goal.parentId);
-      const childEl = goalRefs.current.get(goal.id);
-      if (!parentEl || !childEl) return;
-
-      const pr = parentEl.getBoundingClientRect();
-      const cr = childEl.getBoundingClientRect();
-
-      const x1 = pr.right - containerRect.left;
-      const y1 = pr.top + pr.height / 2 - containerRect.top;
-      const x2 = cr.left - containerRect.left;
-      const y2 = cr.top + cr.height / 2 - containerRect.top;
-
-      const cx = (x1 + x2) / 2;
-      newLines.push({
-        key: `${goal.parentId}-${goal.id}`,
-        parentId: goal.parentId,
-        childId: goal.id,
-        d: `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`,
-      });
-    });
-
-    setLines(newLines);
-  }, [goals]);
-
-  useEffect(() => {
-    computeLines();
-    const onResize = () => computeLines();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [computeLines]);
-
-  const setGoalRef = useCallback((goalId, el) => {
-    if (el) {
-      goalRefs.current.set(goalId, el);
-    } else {
-      goalRefs.current.delete(goalId);
-    }
-  }, []);
-
-  // re-run line computation after refs are attached
-  useEffect(() => {
-    computeLines();
-  }, [goals, computeLines]);
-
-  const allPlaced = goals.length > 0 && rows.some((row) => row.long.length + row.month.length + row.week.length > 0);
+  if (!goals.length) {
+    return (
+      <section className="panel goal-gantt-panel">
+        <div className="section-heading">
+          <h2>目标甘特图</h2>
+        </div>
+        <EmptyState icon={<Target size={22} />} text="还没有目标。在上方新增长期 / 月度 / 本周目标后，这里会按时间线展示。" />
+      </section>
+    );
+  }
 
   return (
-    <div className="goal-graph" ref={graphRef}>
-      <svg className="goal-lines">
-        {lines.map((line) => {
-          const isHovered =
-            hoveredGoalId && (connectedIds.has(line.parentId) || connectedIds.has(line.childId));
-          return (
-            <path
-              key={line.key}
-              d={line.d}
-              className={`goal-line${isHovered ? " highlighted" : ""}`}
-            />
-          );
-        })}
-      </svg>
-
-      <div className="goal-graph-columns">
-        {["long", "month", "week"].map((type) => (
-          <div className="goal-graph-col" key={type}>
-            <div className="goal-graph-col-header">
-              <span>{goalTypeLabel[type]}</span>
-              <strong>{goals.filter((g) => g.type === type).length}</strong>
-            </div>
-          </div>
-        ))}
+    <section className="panel goal-gantt-panel">
+      <div className="section-heading">
+        <h2>目标甘特图</h2>
+        <span className="gantt-hint">跨度按关联任务的日期范围；无任务的目标按类型给默认区间（虚线条）</span>
       </div>
-
-      <div className="goal-graph-rows">
-        {allPlaced ? (
-          rows.map((row, ri) => (
-            <div className="goal-graph-row" key={ri}>
-              {["long", "month", "week"].map((type) => (
-                <div className="goal-graph-cell" key={type}>
-                  {row[type].map((goal) => {
-                    const isConnected = hoveredGoalId && connectedIds.has(goal.id);
-                    const isDimmed = hoveredGoalId && !isConnected;
-                    const isEditing = editingGoalId === goal.id;
-                    const progress = Number(goal.progress) || 0;
-
-                    if (isEditing) {
-                      return (
-                        <article className="goal-card editing" key={goal.id}>
-                          <div className="goal-edit-form">
-                            <input
-                              value={editDraft.title}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
-                              placeholder="目标标题"
-                            />
-                            <div className="goal-edit-row">
-                              <select
-                                value={editDraft.type}
-                                onChange={(e) => setEditDraft((d) => ({ ...d, type: e.target.value, parentId: "" }))}
-                              >
-                                <option value="long">长期</option>
-                                <option value="month">月度</option>
-                                <option value="week">本周</option>
-                              </select>
-                              <select
-                                value={editDraft.priority}
-                                onChange={(e) => setEditDraft((d) => ({ ...d, priority: e.target.value }))}
-                              >
-                                <option value="high">高优先级</option>
-                                <option value="medium">中优先级</option>
-                                <option value="low">低优先级</option>
-                              </select>
-                            </div>
-                            <div className="goal-edit-row">
-                              <select
-                                value={editDraft.parentId}
-                                onChange={(e) => setEditDraft((d) => ({ ...d, parentId: e.target.value }))}
-                              >
-                                <option value="">无上级目标</option>
-                                {goals
-                                  .filter((g) => {
-                                    if (editDraft.type === "month") return g.type === "long";
-                                    if (editDraft.type === "week") return g.type === "month";
-                                    return false;
-                                  })
-                                  .map((g) => (
-                                    <option key={g.id} value={g.id}>
-                                      {g.title}
-                                    </option>
-                                  ))}
-                              </select>
-                            </div>
-                            <div className="goal-edit-actions">
-                              <button className="secondary-action" onClick={() => saveEditingGoal(goal.id)}>
-                                保存
-                              </button>
-                              <button className="secondary-action" onClick={cancelEditingGoal}>取消</button>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    }
-
-                    const parentGoal = goal.parentId && goalById[goal.parentId];
-                    return (
-                      <article
-                        className={`goal-card ${goal.status} priority-${goal.priority}${
-                          isConnected ? " goal-highlighted" : ""
-                        }${isDimmed ? " goal-dimmed" : ""}`}
-                        key={goal.id}
-                        ref={(el) => setGoalRef(goal.id, el)}
-                        onMouseEnter={() => setHoveredGoalId(goal.id)}
-                        onMouseLeave={() => setHoveredGoalId(null)}
-                      >
-                        <div className="goal-card-header">
-                          <strong className="goal-card-title">{goal.title}</strong>
-                          <select
-                            className="goal-status-select"
-                            value={goal.status}
-                            onChange={(e) => handleStatusChange(goal, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <option value="active">进行</option>
-                            <option value="paused">暂停</option>
-                            <option value="done">完成</option>
-                          </select>
-                          <button
-                            className="goal-card-delete"
-                            title="删除目标"
-                            onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id); }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                        <div className="goal-card-progress-row">
-                          <div className={`goal-progress ${goal.status}`}>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={progress}
-                              disabled={goal.status === "done"}
-                              style={{
-                                background:
-                                  goal.status === "done"
-                                    ? "#2f7d55"
-                                    : goal.status === "paused"
-                                      ? `linear-gradient(to right, #d99f1a 0%, #d99f1a ${progress}%, #e9eceb ${progress}%)`
-                                      : `linear-gradient(to right, #2f7d55 0%, #2f7d55 ${progress}%, #e9eceb ${progress}%)`,
-                              }}
-                              onChange={(e) => handleProgressChange(goal, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <button
-                            className="goal-card-edit"
-                            title="编辑目标"
-                            onClick={(e) => { e.stopPropagation(); startEditingGoal(goal); }}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                        </div>
-                        {parentGoal && (
-                          <span className="parent-goal">
-                            <TargetIcon size={12} />
-                            {parentGoal.title}
-                          </span>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          ))
-        ) : (
-          <div className="goal-graph-row">
-            {["long", "month", "week"].map((type) => (
-              <div className="goal-graph-cell" key={type}>
-                <EmptyState icon={<TargetIcon size={22} />} text={`还没有${goalTypeLabel[type]}目标。`} />
-              </div>
+      <div className="gantt">
+        <div className="gantt-axis">
+          <div className="gantt-axis-spacer" />
+          <div className="gantt-axis-track">
+            {ticks.map((d) => (
+              <span key={d} className="gantt-tick" style={{ left: `${pct(d)}%` }}>
+                {formatShortDate(d)}
+              </span>
             ))}
+            {showToday && (
+              <span className="gantt-axis-today" style={{ left: `${pct(today)}%` }}>今天</span>
+            )}
           </div>
-        )}
+        </div>
+        <div className="gantt-rows">
+          {rows.map(({ goal, depth, span, prog }) => {
+            const progress = prog.value;
+            const progressLocked = prog.auto || goal.status === "done";
+            if (editingGoalId === goal.id) {
+              return (
+                <div className="gantt-row is-editing" key={goal.id}>
+                  <div className="goal-edit-form">
+                    <input
+                      value={editDraft.title}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
+                      placeholder="目标标题"
+                    />
+                    <div className="goal-edit-row">
+                      <select
+                        value={editDraft.type}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, type: e.target.value, parentId: "" }))}
+                      >
+                        <option value="long">长期</option>
+                        <option value="month">月度</option>
+                        <option value="week">本周</option>
+                      </select>
+                      <select
+                        value={editDraft.priority}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, priority: e.target.value }))}
+                      >
+                        <option value="high">高优先级</option>
+                        <option value="medium">中优先级</option>
+                        <option value="low">低优先级</option>
+                      </select>
+                    </div>
+                    <div className="goal-edit-row">
+                      <select
+                        value={editDraft.parentId}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, parentId: e.target.value }))}
+                      >
+                        <option value="">无上级目标</option>
+                        {goals
+                          .filter((g) => (editDraft.type === "month" ? g.type === "long" : editDraft.type === "week" ? g.type === "month" : false))
+                          .map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {g.title}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="goal-edit-actions">
+                      <button className="secondary-action" onClick={() => saveEditingGoal(goal.id)}>保存</button>
+                      <button className="secondary-action" onClick={cancelEditingGoal}>取消</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            const left = pct(span.start);
+            const width = Math.max(2.5, ((dayDiff(span.start, span.end) + 1) / totalDays) * 100);
+            return (
+              <div className="gantt-row" key={goal.id}>
+                <div className="gantt-label" style={{ paddingLeft: 10 + depth * 14 }}>
+                  <div className="gantt-label-top">
+                    <span className={`gantt-dot ${goal.type}`} title={goalTypeLabel[goal.type]} />
+                    <strong className="gantt-title" title={goal.title}>{goal.title}</strong>
+                    <button className="icon-button" title="编辑目标" onClick={() => startEditingGoal(goal)}>
+                      <Pencil size={14} />
+                    </button>
+                    <button className="icon-button danger" title="删除目标" onClick={() => deleteGoal(goal.id)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <div className="gantt-label-bot">
+                    <select
+                      className="gantt-status"
+                      value={goal.status}
+                      onChange={(e) => handleStatusChange(goal, e.target.value)}
+                      title="状态"
+                    >
+                      <option value="active">进行</option>
+                      <option value="paused">暂停</option>
+                      <option value="done">完成</option>
+                    </select>
+                    <input
+                      className="gantt-progress"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={progress}
+                      disabled={progressLocked}
+                      onChange={(e) => handleProgressChange(goal, e.target.value)}
+                      title={prog.auto ? `进度由 ${prog.count} 个${prog.kind === "tasks" ? "关联任务" : "子目标"}自动汇总，不可手动调整` : "拖动调整进度"}
+                    />
+                    <span className={`gantt-pct${prog.auto ? " is-auto" : ""}`} title={prog.auto ? "由子项自动汇总" : ""}>{progress}%</span>
+                  </div>
+                </div>
+                <div className="gantt-track">
+                  {ticks.map((d) => (
+                    <span key={d} className="gantt-grid" style={{ left: `${pct(d)}%` }} />
+                  ))}
+                  {showToday && <span className="gantt-track-today" style={{ left: `${pct(today)}%` }} />}
+                  <div
+                    className={`gantt-bar status-${goal.status} priority-${goal.priority}${span.derived === "type" ? " estimated" : ""}`}
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                    title={`${span.start} → ${span.end}（${span.derived === "tasks" ? "按关联任务" : "按类型估算"}）`}
+                  >
+                    <span className="gantt-bar-fill" style={{ width: `${progress}%` }} />
+                    <span className="gantt-bar-pct">{progress}%</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -4870,13 +5163,17 @@ function EmptyState({ icon, text }) {
   );
 }
 
-class ErrorBoundary extends React.Component {
+// 渲染崩溃兜底：避免白屏，给出可刷新的提示 —— from PR #6 (hrjtju)
+export class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { error: null };
   }
   static getDerivedStateFromError(error) {
     return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("ErrorBoundary caught:", error, info);
   }
   render() {
     if (this.state.error) {
