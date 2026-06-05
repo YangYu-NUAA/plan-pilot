@@ -932,17 +932,6 @@ function parseTimeInSentence(sentence) {
   return null;
 }
 
-function looksLikeSingleActionItem(sentence) {
-  const s = String(sentence || "").trim();
-  if (!s) return false;
-  if (s.length > 24) return false;
-  if (/焦虑|压力|不知道|有点|暂时没有|没有别的|其他.{0,6}没有|很多.{0,8}(事情|要做)|事情要做|担心|纠结|烦|累/.test(s)) return false;
-  if (/(然后|接着|之后|以及|并且|还要|还得|还需|一件事|另外)/.test(s)) return false;
-  const times = s.match(/(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*\d{1,2}\s*[点:：时]/g) || [];
-  if (times.length > 1) return false;
-  return true;
-}
-
 function extractBusyBlocksFromText(text, date, existingBlocks = []) {
   const existingKeys = new Set(
     existingBlocks
@@ -1856,7 +1845,6 @@ function App() {
   }, []);
 
   const aiKeyLoaded = Boolean(localAiKey.trim() || serverAiKeyLoaded);
-  const autoSchedulingRef = useRef(false);
 
   const dayPlan = planner.dayPlans[selectedDate] || {
     fixed: "",
