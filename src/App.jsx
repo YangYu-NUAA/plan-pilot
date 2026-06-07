@@ -1091,10 +1091,10 @@ function extractActionTasksFromText(text, date, existingTasks = []) {
     });
 }
 
-async function callPlanningAi({ ai, messages, maxTokens = 1800, json = true }) {
+async function callPlanningAi({ ai, messages, maxTokens = 1800, json = true, serverKeyOk = false }) {
   // 未配置 API Key 时直接抛错，避免触发 400 网络请求
   const effectiveKey = ai.apiKey || readLocalAiKey();
-  if (!effectiveKey) {
+  if (!effectiveKey && !serverKeyOk) {
     throw new Error("未配置 AI API Key。请在设置中添加 Key 后重试。");
   }
   // 推理型模型（step-3.7-flash 等）会把 token 预算先花在「思考」(message.reasoning) 上，
@@ -2188,6 +2188,7 @@ function App() {
       try {
         const result = await callPlanningAi({
           ai: planner.ai,
+          serverKeyOk: serverAiKeyLoaded,
           maxTokens: 2000,
           messages: [
             {
@@ -2588,6 +2589,7 @@ function App() {
     try {
       const result = await callPlanningAi({
         ai: planner.ai,
+        serverKeyOk: serverAiKeyLoaded,
         maxTokens: 1800,
         messages: [
           {
@@ -2686,6 +2688,7 @@ function App() {
     try {
       const result = await callPlanningAi({
         ai: planner.ai,
+        serverKeyOk: serverAiKeyLoaded,
         maxTokens: 1600,
         messages: [
           {
@@ -2792,6 +2795,7 @@ function App() {
     try {
       const result = await callPlanningAi({
         ai: planner.ai,
+        serverKeyOk: serverAiKeyLoaded,
         maxTokens: 1800,
         messages: [
           ...planningCoachSystemMessages(),
@@ -3087,6 +3091,7 @@ function App() {
       const profile = await fetch("/api/profile").then((r) => r.json()).catch(() => ({}));
       const result = await callPlanningAi({
         ai: planner.ai,
+        serverKeyOk: serverAiKeyLoaded,
         maxTokens: 800,
         messages: [
           {
