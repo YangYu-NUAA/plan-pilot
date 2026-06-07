@@ -3441,7 +3441,12 @@ function App() {
             </label>
           </details>
           <p>
-            当前协议：{planner.ai.protocol === "anthropic" ? "Anthropic Messages" : "OpenAI 兼容"}。API Key 通过服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或 .env 文件配置，不会存储在浏览器或数据文件中。
+            当前协议：{planner.ai.protocol === "anthropic" ? "Anthropic Messages" : "OpenAI 兼容"}。
+            {serverAiKeyLoaded
+              ? "已检测到服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY），Key 不会存储在浏览器或数据文件中。"
+              : localAiKey.trim()
+                ? "浏览器 Key 存储在本地 localStorage 中，仅你本机可访问，不会上传到服务器。"
+                : "API Key 可填写在上方输入框（存储在浏览器 localStorage），也可通过服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或 .env 文件配置（不存储在浏览器中）。"}
           </p>
           {currentAiPreset.note && <p className="ai-provider-note">{currentAiPreset.note}</p>}
         </section>
