@@ -689,6 +689,8 @@ textarea {
 .review-layout {
   display: grid;
   gap: 18px;
+  flex: 1;
+  min-height: 0;
 }
 
 .coach-band,
