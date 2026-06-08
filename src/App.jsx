@@ -1255,7 +1255,6 @@ function assignTimelineColumns(blocks) {
   const copies = blocks.map((b) => ({ ...b }));
   const sorted = copies.sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
   const active = []; // blocks whose end time hasn't passed yet
-  let globalMaxCol = 0;
 
   for (const block of sorted) {
     // Remove blocks that have ended before this one starts
@@ -1267,7 +1266,6 @@ function assignTimelineColumns(blocks) {
     let col = 0;
     while (usedCols.has(col)) col++;
     block._col = col;
-    if (col > globalMaxCol) globalMaxCol = col;
     stillActive.push(block);
     active.length = 0;
     active.push(...stillActive);
