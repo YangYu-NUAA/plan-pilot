@@ -1954,7 +1954,6 @@ function App() {
     }
     const weekGoal = weekGoals[0] || null;
     const monthGoal = monthGoals[0] || null;
-    const goalById = Object.fromEntries(planner.goals.map((g) => [g.id, g]));
     return {
       week: weekGoal ? { ...weekGoal, parentTitle: weekGoal.parentId ? goalById[weekGoal.parentId]?.title : "" } : null,
       month: monthGoal ? { ...monthGoal, parentTitle: monthGoal.parentId ? goalById[monthGoal.parentId]?.title : "" } : null,
