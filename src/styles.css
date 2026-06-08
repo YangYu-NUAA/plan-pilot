@@ -1310,7 +1310,12 @@ textarea {
 }
 
 .task-item.done {
-  opacity: 0.62;
+  opacity: 0.75;
+  background: var(--surface-2);
+}
+.task-item.done .task-main strong {
+  text-decoration: line-through;
+  color: var(--text-muted);
 }
 
 .task-item.fixed {
@@ -1378,6 +1383,10 @@ textarea {
   place-items: center;
   border: 0;
   background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.check-button.is-done {
   color: #2f7d55;
 }
 
