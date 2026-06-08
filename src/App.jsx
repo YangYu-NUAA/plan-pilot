@@ -1248,6 +1248,49 @@ function sortBlocks(blocks) {
   return [...blocks].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
 }
 
+function assignTimelineColumns(blocks) {
+  // Greedy lane assignment: assign overlapping blocks to different columns
+  // so they render side-by-side instead of stacking on top of each other.
+  // Uses shallow copies to avoid mutating planner state objects.
+  const copies = blocks.map((b) => ({ ...b }));
+  const sorted = copies.sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+  const active = []; // blocks whose end time hasn't passed yet
+  let globalMaxCol = 0;
+
+  for (const block of sorted) {
+    // Remove blocks that have ended before this one starts
+    const stillActive = active.filter(
+      (b) => toMinutes(b.end) > toMinutes(block.start),
+    );
+    // Find the first free column
+    const usedCols = new Set(stillActive.map((b) => b._col));
+    let col = 0;
+    while (usedCols.has(col)) col++;
+    block._col = col;
+    if (col > globalMaxCol) globalMaxCol = col;
+    stillActive.push(block);
+    active.length = 0;
+    active.push(...stillActive);
+  }
+
+  // Second pass: compute _totalCols for each block based on its overlap group
+  for (const block of sorted) {
+    const overlapping = sorted.filter(
+      (b) =>
+        b.id !== block.id &&
+        toMinutes(b.start) < toMinutes(block.end) &&
+        toMinutes(b.end) > toMinutes(block.start),
+    );
+    const maxCol = Math.max(
+      block._col,
+      ...overlapping.map((b) => b._col || 0),
+    );
+    block._totalCols = maxCol + 1;
+  }
+
+  return sorted;
+}
+
 function getProtectedBreaks(settings) {
   // find midday gaps >30min between work segments
   const segs = settings.workSegments || [];
@@ -1865,7 +1908,7 @@ function App() {
   );
 
   const todayBlocks = useMemo(
-    () => sortBlocks(planner.blocks.filter((block) => block.date === selectedDate)),
+    () => assignTimelineColumns(planner.blocks.filter((block) => block.date === selectedDate)),
     [planner.blocks, selectedDate],
   );
 
@@ -3757,11 +3800,23 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
         else if (task?.priority === "high") cls = "priority-high";
         else if (task?.priority === "medium") cls = "priority-medium";
         else if (task?.priority === "low") cls = "priority-low";
+        const col = block._col ?? 0;
+        const cols = block._totalCols ?? 1;
+        const blkStyle =
+          cols > 1
+            ? {
+                top,
+                height: h,
+                left: `calc(50px + (100% - 52px) * ${col / cols})`,
+                width: `calc((100% - 52px) / ${cols} - 2px)`,
+                right: "auto",
+              }
+            : { top, height: h };
         return (
           <article
             className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}`}
             key={block.id}
-            style={{ top, height: h }}
+            style={blkStyle}
             onPointerDown={(e) => startDrag(e, block, "move")}
           >
             <div className="dt-body">
