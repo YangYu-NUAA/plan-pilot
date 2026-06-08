@@ -679,23 +679,11 @@ textarea {
   transform: rotate(180deg);
 }
 
-.today-grid,
 .goals-layout,
 .review-layout {
   display: grid;
   gap: 18px;
 }
-
-.today-grid {
-  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
-}
-
-/* 晨间规划完成后布局重排 */
-.today-grid.layout-done .task-panel { order: 1; }
-.today-grid.layout-done .schedule-panel { order: 2; }
-.today-grid.layout-done .interview-panel { order: 3; }
-.today-grid.layout-done .coach-band { order: 4; }
-.today-grid.layout-done .stats-row { order: 0; }
 
 .coach-band,
 .stats-row,
@@ -1989,7 +1977,6 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1180px) {
-  .today-grid,
   .review-layout {
     grid-template-columns: 1fr;
   }
