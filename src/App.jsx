@@ -1234,8 +1234,8 @@ function usePlannerStore() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(state),
       }).catch(() => {});
-    }, 2000);
-    return () => clearTimeout(saveTimer.current); // 卸载/重渲染时清理待写定时器 —— from PR #6 (hrjtju)
+    }, 500);
+    return () => clearTimeout(saveTimer.current);
   }, [state, loaded]);
 
   return [state, setState];
