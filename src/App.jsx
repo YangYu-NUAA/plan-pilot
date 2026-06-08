@@ -4322,11 +4322,11 @@ function TodayView({
                 title="拖到右侧时间轴可安排到具体时间"
               >
                 <button
-                  className="check-button"
+                  className={`check-button${task.status === "done" ? " is-done" : ""}`}
                   title={task.status === "done" ? "标记未完成" : "标记完成"}
                   onClick={() => updateTask(task.id, { status: task.status === "done" ? "open" : "done" })}
                 >
-                  <CheckCircle2 size={20} />
+                  {task.status === "done" ? <CheckSquare size={20} /> : <Square size={20} />}
                 </button>
                 <div className="task-main">
                   <strong>{task.title}</strong>
