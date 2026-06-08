@@ -2187,7 +2187,7 @@ textarea:focus-visible {
 .btn-text { border: 0; background: transparent; color: var(--accent); font-weight: 600; font-size: 13px; padding: 4px 8px; cursor: pointer; }
 
 /* 全天 00:00–24:00 较高，容器内部滚动（自动定位到「现在」），避免页面被一根 24 小时长条撑爆 */
-.day-timeline { position: relative; margin-top: 6px; max-height: 68vh; overflow-y: auto; scrollbar-gutter: stable; }
+.day-timeline { position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; max-height: 68vh; overflow-y: auto; scrollbar-gutter: stable; }
 .dt-hour { position: absolute; left: 0; right: 0; border-top: 1px solid #eceae3; }
 .dt-hour span {
   position: relative; top: -8px; left: 4px; background: #ffffff; padding-right: 6px;
@@ -2250,7 +2250,7 @@ textarea:focus-visible {
   margin: 0 auto;
 }
 .cockpit-grid > .stats-row { grid-column: 1 / -1; grid-row: 1; }
-.cockpit-grid > .schedule-panel { grid-column: 1; grid-row: 2 / span 3; }
+.cockpit-grid > .schedule-panel { grid-column: 1; grid-row: 2 / span 3; display: flex; flex-direction: column; min-height: 0; }
 .cockpit-grid > .coach-band { grid-column: 2; grid-row: 2; }
 .cockpit-grid > .interview-panel { grid-column: 2; grid-row: 3; }
 .cockpit-grid > .task-panel { grid-column: 2; grid-row: 4; }
