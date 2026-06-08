@@ -3813,7 +3813,7 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
             : { top, height: h };
         return (
           <article
-            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}`}
+            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}`}
             key={block.id}
             style={blkStyle}
             onPointerDown={(e) => startDrag(e, block, "move")}

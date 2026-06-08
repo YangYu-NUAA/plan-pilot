@@ -2222,6 +2222,8 @@ textarea:focus-visible {
 .dt-check.is-done { opacity: 1; color: #2f7d55; }
 .dt-actions { display: flex; gap: 2px; position: absolute; right: 8px; top: 8px; z-index: 4; opacity: 0; transition: opacity .12s; pointer-events: none; }
 .dt-blk:hover .dt-actions { opacity: 1; pointer-events: auto; }
+.dt-blk.dt-done { opacity: 0.65; }
+.dt-blk.dt-done .dt-bt { text-decoration: line-through; }
 .dt-actions button {
   width: 24px; height: 24px; display: grid; place-items: center;
   border: 0; border-radius: 6px; background: rgba(255, 255, 255, .55); color: inherit; cursor: pointer;
