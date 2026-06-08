@@ -2212,9 +2212,9 @@ function App() {
                 date: selectedDate,
                 startOfDay: (planner.settings.workSegments && planner.settings.workSegments[0] && planner.settings.workSegments[0].start) || "09:00",
                 endOfDay: (planner.settings.workSegments && planner.settings.workSegments[planner.settings.workSegments.length - 1] && planner.settings.workSegments[planner.settings.workSegments.length - 1].end) || "18:00",
-                workSegments: (planner.settings.workSegments || []).map((s) => ({ start: s.start, end: s.end })),
+                workSegments,
                 dayPlan,
-                protectedBreaks: getProtectedBreaks(planner.settings),
+                protectedBreaks,
                 tasks: prepared.tasks
                   .filter((task) => task.date === selectedDate && task.status !== "done" && !task.fixedTime && task.kind !== "fixed")
                   .map(({ id, title, estimateMinutes, priority, goalId }) => ({
