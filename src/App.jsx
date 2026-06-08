@@ -2,6 +2,7 @@
 import {
   CalendarDays,
   CheckCircle2,
+  CheckSquare,
   ChevronRight,
   Clock3,
   Download,
@@ -15,6 +16,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Square,
   Target,
   Trash2,
   Upload,
@@ -3672,7 +3674,7 @@ function App() {
   );
 }
 
-function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete }) {
+function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone }) {
   const PXH = 56; // 每小时像素
   const ppm = PXH / 60;
   const segs = settings.workSegments || [];
@@ -3816,6 +3818,16 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
             style={blkStyle}
             onPointerDown={(e) => startDrag(e, block, "move")}
           >
+            {!busy && block.taskId && task && onToggleDone && (
+              <button
+                className={`dt-check${task.status === "done" ? " is-done" : ""}`}
+                title={task.status === "done" ? "标记未完成" : "标记完成"}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onToggleDone(block); }}
+              >
+                {task.status === "done" ? <CheckSquare size={16} /> : <Square size={16} />}
+              </button>
+            )}
             <div className="dt-body">
               <div className="dt-bt">{title}</div>
               <div className="dt-bm">
@@ -4643,6 +4655,10 @@ function TodayView({
           onDropTask={scheduleTaskAtMinute}
           onEdit={startEditingBlock}
           onDelete={deleteBlock}
+          onToggleDone={(block) => {
+            const t = taskById[block.taskId];
+            if (t) updateTask(t.id, { status: t.status === "done" ? "open" : "done" });
+          }}
         />
       </section>
     </div>
