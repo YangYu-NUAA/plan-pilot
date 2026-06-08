@@ -3264,7 +3264,6 @@ function App() {
           ))}
           {(planner.settings.workSegments || []).length < 3 && (
             <button className="compact-action" onClick={() => {
-              const totalMin = workloadMinutes(planner.settings);
               setSegmentDraft({ start: "09:00", end: "12:00" });
               setShowSegmentModal(true);
             }}>
