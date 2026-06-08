@@ -2218,6 +2218,7 @@ textarea:focus-visible {
 .dt-resize::after { content: ""; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 28px; height: 3px; border-radius: 3px; background: currentColor; opacity: 0; transition: opacity .12s; }
 .dt-blk:hover .dt-resize::after { opacity: .4; }
 .dt-body { min-width: 0; position: relative; z-index: 1; padding-right: 0; transition: padding-right .12s; }
+.dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }
 .dt-blk:hover .dt-body { padding-right: 54px; }
 .dt-bt { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dt-bm { font-size: 11.5px; opacity: .85; margin-top: 2px; }
