@@ -3852,7 +3852,7 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
           <b>放到 {toTime(dropMin)}</b>
         </div>
       )}
-      <div className="dt-spacer" style={{ height: totalMin * ppm + 18, pointerEvents: "none" }} />
+      <div style={{ height: totalMin * ppm + 18, pointerEvents: "none" }} />
     </div>
   );
 }
