@@ -3733,7 +3733,7 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
     <div
       className="day-timeline"
       ref={rootRef}
-      style={{ height: totalMin * ppm + 18 }}
+      style={{}} // height determined by flex layout; inner spacer keeps 24h canvas
       onDragOver={onDragOverTimeline}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDropMin(null); }}
       onDrop={onDropTimeline}
@@ -3800,6 +3800,7 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
           <b>放到 {toTime(dropMin)}</b>
         </div>
       )}
+      <div className="dt-spacer" style={{ height: totalMin * ppm + 18, pointerEvents: "none" }} />
     </div>
   );
 }
