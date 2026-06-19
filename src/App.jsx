@@ -3611,6 +3611,9 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
         let cls = "deep";
         if (busy) cls = isMeetingSentence(title) ? "meet" : "busy";
         else if (task?.kind === "fixed") cls = "meet";
+        else if (task?.priority === "high") cls = "priority-high";
+        else if (task?.priority === "medium") cls = "priority-medium";
+        else if (task?.priority === "low") cls = "priority-low";
         return (
           <article
             className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}`}

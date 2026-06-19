@@ -28,6 +28,9 @@
   --meet-soft: #f4efdd; --meet-bar: #ad8a40; --meet-ink: #695120;
   --busy-soft: #eeece4; --busy-bar: #a4a094; --busy-ink: #5b564b;
   --admin-soft: #e9eee8; --admin-bar: #7c917a; --admin-ink: #445540;
+  --priority-high-soft: #fef0ee; --priority-high-bar: #c05e3e; --priority-high-ink: #8c2e24;
+  --priority-medium-soft: #fdf6e5; --priority-medium-bar: #d99f1a; --priority-medium-ink: #735a15;
+  --priority-low-soft: #ece8e0; --priority-low-bar: #a89c84; --priority-low-ink: #5a4e3a;
   --radius: 14px;
   --radius-sm: 10px;
   --shadow-sm: 0 1px 2px rgba(38, 33, 24, 0.04), 0 1px 3px rgba(38, 33, 24, 0.05);
@@ -2238,6 +2241,9 @@ textarea:focus-visible {
   background: repeating-linear-gradient(135deg, transparent, transparent 7px, rgba(164, 160, 148, .16) 7px, rgba(164, 160, 148, .16) 14px);
   pointer-events: none;
 }
+.dt-priority-high { background: var(--priority-high-soft); box-shadow: inset 3px 0 0 var(--priority-high-bar); color: var(--priority-high-ink); }
+.dt-priority-medium { background: var(--priority-medium-soft); box-shadow: inset 3px 0 0 var(--priority-medium-bar); color: var(--priority-medium-ink); }
+.dt-priority-low { background: var(--priority-low-soft); box-shadow: inset 3px 0 0 var(--priority-low-bar); color: var(--priority-low-ink); }
 
 /* —— 今日页驾驶舱布局（两列：左日历主角 + 右控件栏 + 顶部统计条） —— */
 .cockpit-grid {
@@ -2275,6 +2281,9 @@ html[data-theme="cool"] {
   --meet-soft: #e3f1f1; --meet-bar: #3a9090; --meet-ink: #1f5454;
   --busy-soft: #eaeef3; --busy-bar: #9aa6b2; --busy-ink: #4d5a68;
   --admin-soft: #eef0fb; --admin-bar: #7b86c4; --admin-ink: #3f477e;
+  --priority-high-soft: #fef3f1; --priority-high-bar: #c8503f; --priority-high-ink: #7a2e24;
+  --priority-medium-soft: #fdf8ec; --priority-medium-bar: #c89a2f; --priority-medium-ink: #6b4e16;
+  --priority-low-soft: #ecf2f0; --priority-low-bar: #5d8a7e; --priority-low-ink: #304a42;
 }
 
 /* —— 主题：墨灰 —— */
@@ -2288,6 +2297,9 @@ html[data-theme="graphite"] {
   --meet-soft: #f4efe2; --meet-bar: #a98a45; --meet-ink: #5f4d22;
   --busy-soft: #eef0f3; --busy-bar: #9aa1ad; --busy-ink: #4a515e;
   --admin-soft: #eef1f5; --admin-bar: #6b7689; --admin-ink: #3c4554;
+  --priority-high-soft: #fdf0ef; --priority-high-bar: #c0533f; --priority-high-ink: #7a2e25;
+  --priority-medium-soft: #fdf8ed; --priority-medium-bar: #b58a36; --priority-medium-ink: #6b4d17;
+  --priority-low-soft: #e8e4dc; --priority-low-bar: #8a7d6e; --priority-low-ink: #4a4030;
 }
 
 /* —— 目标甘特图 —— */
