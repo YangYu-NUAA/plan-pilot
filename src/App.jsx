@@ -2,6 +2,7 @@
 import {
   CalendarDays,
   CheckCircle2,
+  CheckSquare,
   ChevronRight,
   Clock3,
   Download,
@@ -15,6 +16,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Square,
   Target,
   Trash2,
   Upload,
@@ -3493,7 +3495,7 @@ function App() {
   );
 }
 
-function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete }) {
+function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone }) {
   const PXH = 56; // 每小时像素
   const ppm = PXH / 60;
   const segs = settings.workSegments || [];
@@ -3620,11 +3622,25 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
         else if (task?.priority === "low") cls = "priority-low";
         return (
           <article
-            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}`}
+            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}`}
             key={block.id}
             style={{ top, height: h }}
             onPointerDown={(e) => startDrag(e, block, "move")}
           >
+            {!busy && block.taskId && task && onToggleDone && (
+              <button
+                type="button"
+                className={`dt-check${task.status === "done" ? " is-done" : ""}`}
+                role="checkbox"
+                aria-checked={task.status === "done"}
+                aria-label={task.status === "done" ? "标记未完成" : "标记完成"}
+                title={task.status === "done" ? "标记未完成" : "标记完成"}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onToggleDone(block); }}
+              >
+                {task.status === "done" ? <CheckSquare size={16} /> : <Square size={16} />}
+              </button>
+            )}
             <div className="dt-body">
               <div className="dt-bt">{title}</div>
               <div className="dt-bm">
@@ -4185,11 +4201,15 @@ function TodayView({
                 title="拖到右侧时间轴可安排到具体时间"
               >
                 <button
-                  className="check-button"
+                  type="button"
+                  className={`check-button${task.status === "done" ? " is-done" : ""}`}
+                  role="checkbox"
+                  aria-checked={task.status === "done"}
+                  aria-label={task.status === "done" ? "标记未完成" : "标记完成"}
                   title={task.status === "done" ? "标记未完成" : "标记完成"}
                   onClick={() => updateTask(task.id, { status: task.status === "done" ? "open" : "done" })}
                 >
-                  <CheckCircle2 size={20} />
+                  {task.status === "done" ? <CheckSquare size={20} /> : <Square size={20} />}
                 </button>
                 <div className="task-main">
                   <strong>{task.title}</strong>
@@ -4454,6 +4474,10 @@ function TodayView({
           onDropTask={scheduleTaskAtMinute}
           onEdit={startEditingBlock}
           onDelete={deleteBlock}
+          onToggleDone={(block) => {
+            const t = taskById[block.taskId];
+            if (t) updateTask(t.id, { status: t.status === "done" ? "open" : "done" });
+          }}
         />
       </section>
     </div>

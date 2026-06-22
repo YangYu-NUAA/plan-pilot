@@ -1327,7 +1327,12 @@ textarea {
 }
 
 .task-item.done {
-  opacity: 0.62;
+  opacity: 0.75;
+  background: var(--surface-2);
+}
+.task-item.done .task-main strong {
+  text-decoration: line-through;
+  color: var(--text-muted);
 }
 
 .task-item.fixed {
@@ -1395,6 +1400,10 @@ textarea {
   place-items: center;
   border: 0;
   background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.check-button.is-done {
   color: #2f7d55;
 }
 
@@ -2223,11 +2232,18 @@ textarea:focus-visible {
 .dt-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 9px; cursor: ns-resize; z-index: 3; }
 .dt-resize::after { content: ""; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 28px; height: 3px; border-radius: 3px; background: currentColor; opacity: 0; transition: opacity .12s; }
 .dt-blk:hover .dt-resize::after { opacity: .4; }
-.dt-body { min-width: 0; position: relative; z-index: 1; }
+.dt-body { min-width: 0; position: relative; z-index: 1; padding-right: 0; transition: padding-right .12s; }
+.dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }
+.dt-blk:hover .dt-body { padding-right: 54px; }
 .dt-bt { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dt-bm { font-size: 11.5px; opacity: .85; margin-top: 2px; }
+.dt-check { position: absolute; left: 4px; top: 4px; z-index: 4; display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 4px; background: rgba(255,255,255,.65); color: var(--text-muted); cursor: pointer; opacity: 0; transition: opacity .12s; padding: 0; }
+.dt-blk:hover .dt-check { opacity: 1; }
+.dt-check.is-done { opacity: 1; color: #2f7d55; }
 .dt-actions { display: flex; gap: 2px; flex: none; position: relative; z-index: 1; opacity: 0; transition: opacity .12s; }
 .dt-blk:hover .dt-actions { opacity: 1; }
+.dt-blk.dt-done { opacity: 0.65; }
+.dt-blk.dt-done .dt-bt { text-decoration: line-through; }
 .dt-actions button {
   width: 24px; height: 24px; display: grid; place-items: center;
   border: 0; border-radius: 6px; background: rgba(255, 255, 255, .55); color: inherit; cursor: pointer;
