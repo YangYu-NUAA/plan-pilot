@@ -1985,6 +1985,8 @@ function App() {
         type: String(fieldValue(form, "type", goalDraft.type)),
         parentId: String(fieldValue(form, "parentId", goalDraft.parentId || "")),
         priority: String(fieldValue(form, "priority", goalDraft.priority)),
+        startDate: "",
+        endDate: "",
         status: "active",
         progress: 0,
         createdAt: new Date().toISOString(),
@@ -4727,6 +4729,12 @@ function buildGoalGantt(goals, tasks, todayStr) {
     visiting.add(goalId);
     const dates = [];
     (tasksByGoal[goalId] || []).forEach((t) => { if (/^\d{4}-\d{2}-\d{2}$/.test(t.date)) dates.push(t.date); });
+    const goalObj = goalMap[goalId];
+    const startDate = goalObj?.startDate && /^\d{4}-\d{2}-\d{2}$/.test(goalObj.startDate) ? goalObj.startDate : "";
+    const endDate = goalObj?.endDate && /^\d{4}-\d{2}-\d{2}$/.test(goalObj.endDate) ? goalObj.endDate : "";
+    if (startDate) dates.push(startDate);
+    if (endDate) dates.push(endDate);
+    const hasExplicit = !!(startDate || endDate);
     const childSpans = (childrenMap[goalId] || []).map((c) => spanOf(c.id, visiting)).filter(Boolean);
     const starts = dates.concat(childSpans.map((s) => s.start));
     const ends = dates.concat(childSpans.map((s) => s.end));
@@ -4736,8 +4744,11 @@ function buildGoalGantt(goals, tasks, todayStr) {
       let end = ends[0];
       starts.forEach((d) => { if (d < start) start = d; });
       ends.forEach((d) => { if (d > end) end = d; });
+      // 单边日期补另一边（保底 1 天宽度，避免 bar 塌缩成点）
+      if (startDate && !endDate) end = addDays(startDate, 1);
+      else if (endDate && !startDate) start = addDays(endDate, -1);
       const hasTasks = dates.length > 0 || childSpans.some((s) => s.derived === "tasks");
-      info = { start, end, derived: hasTasks ? "tasks" : "type" };
+      info = { start, end, derived: hasExplicit ? "explicit" : hasTasks ? "tasks" : "type" };
     } else {
       const type = (goalMap[goalId] && goalMap[goalId].type) || "month";
       info = { start: todayStr, end: addDays(todayStr, HORIZON[type] || 28), derived: "type" };
@@ -4771,25 +4782,35 @@ function buildGoalGantt(goals, tasks, todayStr) {
 
 function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
   const [editingGoalId, setEditingGoalId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ title: "", type: "long", priority: "medium", parentId: "" });
+  const [editDraft, setEditDraft] = useState({ title: "", type: "long", priority: "medium", parentId: "", startDate: "", endDate: "" });
+  const [editError, setEditError] = useState("");
   const today = getLocalDate();
 
   function startEditingGoal(goal) {
     setEditingGoalId(goal.id);
-    setEditDraft({ title: goal.title, type: goal.type, priority: goal.priority, parentId: goal.parentId || "" });
+    setEditDraft({ title: goal.title, type: goal.type, priority: goal.priority, parentId: goal.parentId || "", startDate: goal.startDate || "", endDate: goal.endDate || "" });
+    setEditError("");
   }
   function cancelEditingGoal() {
     setEditingGoalId(null);
+    setEditError("");
   }
   function saveEditingGoal(goalId) {
     if (!editDraft.title.trim()) return;
+    if (editDraft.startDate && editDraft.endDate && editDraft.startDate > editDraft.endDate) {
+      setEditError("结束日期不能早于开始日期");
+      return;
+    }
     updateGoal(goalId, {
       title: editDraft.title.trim(),
       type: editDraft.type,
       priority: editDraft.priority,
       parentId: editDraft.parentId || "",
+      startDate: editDraft.startDate || "",
+      endDate: editDraft.endDate || "",
     });
     setEditingGoalId(null);
+    setEditError("");
   }
   function handleStatusChange(goal, status) {
     if (status === "done") updateGoal(goal.id, { status: "done", progress: 100 });
@@ -4885,6 +4906,25 @@ function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
                           ))}
                       </select>
                     </div>
+                    <div className="goal-edit-row">
+                      <label>
+                        开始
+                        <input
+                          type="date"
+                          value={editDraft.startDate}
+                          onChange={(e) => { setEditDraft((d) => ({ ...d, startDate: e.target.value })); setEditError(""); }}
+                        />
+                      </label>
+                      <label>
+                        结束
+                        <input
+                          type="date"
+                          value={editDraft.endDate}
+                          onChange={(e) => { setEditDraft((d) => ({ ...d, endDate: e.target.value })); setEditError(""); }}
+                        />
+                      </label>
+                    </div>
+                    {editError && <div className="goal-edit-error">{editError}</div>}
                     <div className="goal-edit-actions">
                       <button className="secondary-action" onClick={() => saveEditingGoal(goal.id)}>保存</button>
                       <button className="secondary-action" onClick={cancelEditingGoal}>取消</button>
@@ -4938,9 +4978,9 @@ function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
                   ))}
                   {showToday && <span className="gantt-track-today" style={{ left: `${pct(today)}%` }} />}
                   <div
-                    className={`gantt-bar status-${goal.status} priority-${goal.priority}${span.derived === "type" ? " estimated" : ""}`}
+                    className={`gantt-bar status-${goal.status} priority-${goal.priority}${span.derived === "type" ? " estimated" : ""}${span.derived === "explicit" ? " explicit" : ""}`}
                     style={{ left: `${left}%`, width: `${width}%` }}
-                    title={`${span.start} → ${span.end}（${span.derived === "tasks" ? "按关联任务" : "按类型估算"}）`}
+                    title={`${span.start} → ${span.end}（${span.derived === "explicit" ? "手动指定" : span.derived === "tasks" ? "按关联任务" : "按类型估算"}）`}
                   >
                     <span className="gantt-bar-fill" style={{ width: `${progress}%` }} />
                     <span className="gantt-bar-pct">{progress}%</span>
