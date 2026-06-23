@@ -1208,7 +1208,48 @@ function polishAiBlocks(blocks, segments) {
     break; // only check last block
   }
 
-  return result;
+  // Safety net: even with the HARD BOUNDARY RULE in the prompt, AI may still
+  // emit blocks outside work segments (weak models, temperature drift, JSON
+  // truncation). Force-clamp start/end into the nearest segment and drop
+  // anything that collapses below 5 min — those are too short to render or
+  // interact with meaningfully.
+  return clampToSegments(result, segments);
+}
+
+// Force every block to lie strictly within one of `segments`. Blocks that
+// don't fit are clamped (start/end pulled into the nearest segment that
+// contains the midpoint); if a block has no overlap with any segment, it's
+// dropped. Blocks shorter than MIN_BLOCK_MIN after clamping are also dropped.
+function clampToSegments(blocks, segments) {
+  const MIN_BLOCK_MIN = 5;
+  if (!segments.length) return blocks.filter(() => false);
+  const segRanges = segments.map((s) => ({ start: toMinutes(s.start), end: toMinutes(s.end) }));
+
+  return blocks
+    .filter((b) => b && b.start && b.end)
+    .map((b) => {
+      const sMin = toMinutes(b.start);
+      const eMin = toMinutes(b.end);
+      if (eMin <= sMin) return { ...b, _drop: true };
+      // Find segment containing the block midpoint, or nearest one.
+      const mid = (sMin + eMin) / 2;
+      let seg = segRanges.find((s) => mid >= s.start && mid <= s.end);
+      if (!seg) {
+        // Pick nearest segment by midpoint distance.
+        let best = segRanges[0];
+        let bestDist = Math.abs(mid - (best.start + best.end) / 2);
+        for (const s of segRanges) {
+          const d = Math.abs(mid - (s.start + s.end) / 2);
+          if (d < bestDist) { best = s; bestDist = d; }
+        }
+        seg = best;
+      }
+      const newStart = Math.max(sMin, seg.start);
+      const newEnd = Math.min(eMin, seg.end);
+      const newDur = newEnd - newStart;
+      if (newDur < MIN_BLOCK_MIN) return { ...b, _drop: true };
+      return { ...b, start: toTime(newStart), end: toTime(newEnd) };
+    });
 }
 
 function workloadMinutes(settings) {
@@ -2100,6 +2141,14 @@ function App() {
       return;
     }
 
+    const workSegments = (planner.settings.workSegments || []).map((s) => ({ start: s.start, end: s.end }));
+    const protectedBreaks = getProtectedBreaks(planner.settings);
+    const segList = workSegments.map((s) => `${s.start}-${s.end}`).join("、");
+    const breakDesc =
+      protectedBreaks.length > 0
+        ? protectedBreaks.map((b) => `${b.start}-${b.end}`).join("、")
+        : "无";
+
     setAiStatus({ loading: true, error: "", message: "AI 正在为你安排今日时间..." });
     try {
       const result = await callPlanningAi({
@@ -2110,15 +2159,17 @@ function App() {
           {
             role: "system",
             content:
-              "You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}. Use only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Protect lunch 12:00-13:00 by default. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block.",
+              `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. If a large task (≥120 min) cannot fit in a single free interval, consider splitting it across two sessions (e.g. morning + afternoon). Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message.`,
           },
           {
             role: "user",
             content: JSON.stringify({
               date: selectedDate,
-              settings: planner.settings,
+              startOfDay: (planner.settings.workSegments && planner.settings.workSegments[0] && planner.settings.workSegments[0].start) || "09:00",
+              endOfDay: (planner.settings.workSegments && planner.settings.workSegments[planner.settings.workSegments.length - 1] && planner.settings.workSegments[planner.settings.workSegments.length - 1].end) || "18:00",
+              workSegments,
               dayPlan,
-              protectedBreaks: getProtectedBreaks(planner.settings),
+              protectedBreaks,
               tasks: prepared.tasks
                 .filter((task) => task.date === selectedDate && task.status !== "done" && !task.fixedTime && task.kind !== "fixed")
                 .map(({ id, title, estimateMinutes, priority, goalId }) => ({
@@ -2131,6 +2182,9 @@ function App() {
               manualBlocks: prepared.blocks
                 .filter((block) => block.date === selectedDate && !block.auto)
                 .map(({ title, taskId, type, start, end }) => ({ title, taskId, type, start, end })),
+              currentAutoBlocks: prepared.blocks
+                .filter((block) => block.date === selectedDate && block.auto)
+                .map(({ title, taskId, start, end }) => ({ title, taskId, start, end })),
               fixedTimeTasks: prepared.tasks
                 .filter((task) => task.date === selectedDate && task.status !== "done" && task.fixedTime && task.fixedStart)
                 .map(({ title, fixedStart, estimateMinutes }) => ({ title, start: fixedStart, estimateMinutes })),
