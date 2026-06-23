@@ -1109,6 +1109,44 @@ function sortBlocks(blocks) {
   return [...blocks].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
 }
 
+// Greedy lane assignment for overlapping blocks. Each block gets a `_col`
+// (its lane index) and `_totalCols` (number of lanes in its overlap cluster)
+// so the timeline can render them side-by-side instead of stacking on top.
+//
+// Complexity: O(n log n) for the sort, O(n × max_overlap) for the sweep.
+// In practice max_overlap is bounded by daily schedule density (~3-5),
+// so this is effectively O(n). The naive alternative recomputing totalCols
+// per block via a full filter would be O(n²).
+function assignTimelineColumns(blocks) {
+  const sorted = [...blocks]
+    .sort((a, b) => toMinutes(a.start) - toMinutes(b.start))
+    .map((b) => ({ ...b }));
+  const active = []; // { block, endMin } — blocks still overlapping with current
+
+  for (const block of sorted) {
+    const startMin = toMinutes(block.start);
+    // Drop blocks that ended before this one started.
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].endMin <= startMin) active.splice(i, 1);
+    }
+    // Pick smallest free lane among currently-active blocks.
+    const usedCols = new Set(active.map((a) => a.block._col));
+    let col = 0;
+    while (usedCols.has(col)) col++;
+    block._col = col;
+    // Compute shared totalCols = max lane index used by this block's cluster.
+    let maxCol = col;
+    for (const a of active) if (a.block._col > maxCol) maxCol = a.block._col;
+    const totalCols = maxCol + 1;
+    block._totalCols = totalCols;
+    // All active blocks share the same cluster → same totalCols.
+    for (const a of active) a.block._totalCols = totalCols;
+    active.push({ block, endMin: toMinutes(block.end) });
+  }
+
+  return sorted;
+}
+
 function getProtectedBreaks(settings) {
   // find midday gaps >30min between work segments
   const segs = settings.workSegments || [];
@@ -1733,7 +1771,7 @@ function App() {
   );
 
   const todayBlocks = useMemo(
-    () => sortBlocks(planner.blocks.filter((block) => block.date === selectedDate)),
+    () => assignTimelineColumns(planner.blocks.filter((block) => block.date === selectedDate)),
     [planner.blocks, selectedDate],
   );
 
@@ -3094,7 +3132,6 @@ function App() {
           ))}
           {(planner.settings.workSegments || []).length < 3 && (
             <button className="compact-action" onClick={() => {
-              const totalMin = workloadMinutes(planner.settings);
               setSegmentDraft({ start: "09:00", end: "12:00" });
               setShowSegmentModal(true);
             }}>
@@ -3622,11 +3659,24 @@ function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, o
         else if (task?.priority === "high") cls = "priority-high";
         else if (task?.priority === "medium") cls = "priority-medium";
         else if (task?.priority === "low") cls = "priority-low";
+        const col = block._col ?? 0;
+        const cols = block._totalCols ?? 1;
+        // When overlapping, shift left/width so blocks render side-by-side.
+        // Single blocks keep the original full-width layout (right: 2px).
+        const blkStyle = cols > 1
+          ? {
+              top,
+              height: h,
+              left: `calc(50px + (100% - 52px) * ${col / cols})`,
+              width: `calc((100% - 52px) / ${cols} - 2px)`,
+              right: "auto",
+            }
+          : { top, height: h };
         return (
           <article
             className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}`}
             key={block.id}
-            style={{ top, height: h }}
+            style={blkStyle}
             onPointerDown={(e) => startDrag(e, block, "move")}
           >
             {!busy && block.taskId && task && onToggleDone && (
