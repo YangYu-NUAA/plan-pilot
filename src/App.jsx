@@ -37,7 +37,8 @@ import {
   looksLikeSingleActionItem,
   pinnableTimeForTitle,
 } from "./planningSemantics.js";
-import { tryExtractJson } from "./jsonExtract.js";
+import { tryExtractJson, richestJson, isMeaningfulJson } from "./jsonExtract.js";
+import { emptyDraft, mergeCoachDraft, actionToItem, coachMessageFrom } from "./coachHarness.js";
 import { APP_NAME, APP_SHORT_NAME, STORAGE_KEY } from "./constants/appConstants.js";
 import { AI_PROVIDER_PRESETS, getAiProviderPreset } from "./constants/aiProviders.js";
 import { defaultState } from "./app/initialState.js";
@@ -303,7 +304,9 @@ function collectCoachItems(result) {
     : Array.isArray(result?.busyBlocks)
       ? result.busyBlocks.map((item) => ({ ...item, kind: "busy" }))
       : [];
-  return items.concat(goals, tasks, busy);
+  // 动作 schema（harness B）：把 add_* 动作转成 item；ask/done 返回 null 被过滤。兼容旧 items 形态。
+  const fromActions = Array.isArray(result?.actions) ? result.actions.map(actionToItem).filter(Boolean) : [];
+  return items.concat(goals, tasks, busy, fromActions);
 }
 
 function normalizeCoachItems(items, selectedDate) {
@@ -923,46 +926,52 @@ async function callPlanningAi({ ai, apiKey: explicitApiKey, messages, maxTokens 
     if (!response.ok) throw new Error(data.error?.message || data.error || "AI 调用失败。");
     const top = data.choices?.[0] || {};
     const choice = top.message || {};
-    let content = choice.content ?? choice.reasoning_content ?? "";
-    if (Array.isArray(content)) {
-      content = content.map((part) => (typeof part === "string" ? part : part?.text || "")).join("");
-    }
-    content = String(content || "").trim();
-    // 推理模型把预算用光、还没写正文：给出准确报错，而不是误判成「JSON 格式错误」
-    if (!content && top.finish_reason === "length") {
+    const flatten = (v) =>
+      Array.isArray(v) ? v.map((p) => (typeof p === "string" ? p : p?.text || "")).join("") : String(v || "");
+    const content = flatten(choice.content).trim();
+    // 推理模型（step-3.7-flash 等）常把真正的答案写进 reasoning，正文只给 {} 或空——单独留存供回退。
+    const reasoning = flatten(choice.reasoning ?? choice.reasoning_content).trim();
+    if (!content && !reasoning && top.finish_reason === "length") {
       throw new Error("模型把 token 预算都用在思考上、正文被截断（finish_reason=length）。请调大 max_tokens，或在模型侧关闭推理模式。");
     }
-    return content;
+    return { content, reasoning };
   }
 
   if (!json) {
-    const content = await once(false);
-    return tryExtractJson(content) || { message: content, items: [] };
+    const { content, reasoning } = await once(false);
+    return tryExtractJson(content) || tryExtractJson(reasoning) || { message: content || reasoning, items: [] };
   }
 
   // JSON 模式：生成 → 校验 → 修复，逐步降级，最多 3 次，让弱模型也能稳定吐 JSON
+  // 第 1 次走严格 json_object（多数模型更稳）；但 step-3.7-flash 在该模式下爱只吐 "{}"，
+  // 把答案留在 reasoning，所以第 2/3 次关掉该模式 + 追一句，更可能把完整 JSON 写进正文。
   const tries = [
     () => once(true),
-    () => once(false, [{ role: "user", content: "请只返回一个 JSON 对象：不要 Markdown 代码块、不要任何解释或前后缀，必须以 { 开头、以 } 结尾。" }]),
-    () => once(false, [{ role: "user", content: "上一条没有给出合法 JSON。现在只输出修正后的纯 JSON 对象，开头是 {、结尾是 }，其余一律不要。" }]),
+    () => once(false, [{ role: "user", content: "你上一条只返回了空对象或没有正文。请把【完整】的 JSON 结果直接作为正文返回——不要把内容只写在思考 / reasoning 里、不要只给 {}；以 { 开头、} 结尾，不要 Markdown、不要任何解释。" }]),
+    () => once(false, [{ role: "user", content: "再试一次：只输出一个内容非空的完整 JSON 对象作为正文，把该填的字段都填上，其余一律不要。" }]),
   ];
   let lastError = null;
+  let degenerateFallback = null;
   for (const run of tries) {
-    let content = "";
+    let res;
     try {
-      content = await run();
+      res = await run();
     } catch (error) {
       lastError = error;
       continue;
     }
-    if (!content) {
-      lastError = new Error("AI 没有返回可用内容。");
-      continue;
-    }
-    const parsed = tryExtractJson(content);
-    if (parsed) return parsed;
-    lastError = new Error("AI 返回的不是有效 JSON。");
+    const { content, reasoning } = res;
+    // 1) 优先用正文里的有意义 JSON
+    const fromContent = content ? tryExtractJson(content) : null;
+    if (isMeaningfulJson(fromContent)) return fromContent;
+    // 2) 正文退化（step-3.7-flash 只吐 "{}"、答案在 reasoning）：从 reasoning 捞最终 JSON
+    const fromReasoning = reasoning ? richestJson(reasoning) : null;
+    if (isMeaningfulJson(fromReasoning)) return fromReasoning;
+    // 3) 拿到的是退化空对象：记下来但【继续重试】，绝不在这里短路（否则白白浪费后两次更可能成功的尝试）
+    if (fromContent && !degenerateFallback) degenerateFallback = fromContent;
+    lastError = new Error(!content && !reasoning ? "AI 没有返回可用内容。" : "AI 返回的内容为空 / 退化。");
   }
+  if (degenerateFallback) return degenerateFallback; // 三次都没拿到有意义结果，退而求其次
   throw new Error(`${lastError?.message || "AI 调用失败"}（已自动重试，仍未拿到可用 JSON；可换更稳的模型如 DeepSeek）。`);
 }
 
@@ -1676,6 +1685,7 @@ function App() {
     messages: [],
     input: "",
     suggestions: [],
+    draft: emptyDraft(), // 跨轮累积的计划草稿（喂给模型作 draftSummary 去重提示；step 4 起驱动 UI）
     loading: false,
     error: "",
   });
@@ -2725,6 +2735,12 @@ function App() {
                 .map(({ title, type, start, end, taskId }) => ({ title, type, start, end, taskId })),
               doNotRepeatTaskTitles: planner.tasks.map((task) => task.title),
               doNotRepeatGoalTitles: planner.goals.map((goal) => goal.title),
+              // 草稿摘要：告诉模型至今已落了哪些条目，避免重复 add（harness 跨轮草稿）
+              draftSummary: {
+                goals: planningCoach.draft.goals.map((g) => ({ tempId: g.tempId, type: g.type, title: g.title })),
+                tasks: planningCoach.draft.tasks.map((t) => ({ title: t.title, date: t.date })),
+                busy: planningCoach.draft.busy.map((b) => ({ title: b.title, date: b.date })),
+              },
             }),
           },
           ...nextMessages.map((message) => ({
@@ -2743,8 +2759,9 @@ function App() {
         ...coach,
         loading: false,
         error: "",
-        messages: nextMessages.concat({ role: "assistant", content: result.message || "我已经整理出一组建议。" }),
+        messages: nextMessages.concat({ role: "assistant", content: coachMessageFrom(result) || "我已经整理出一组建议。" }),
         suggestions: items,
+        draft: mergeCoachDraft(coach.draft, items), // 把本轮 items 并入跨轮草稿
       }));
     } catch (error) {
       setPlanningCoach((coach) => ({
@@ -3985,6 +4002,7 @@ function TodayView({
                 scope: event.target.value,
                 messages: [],
                 suggestions: [],
+                draft: emptyDraft(),
                 error: "",
               }))
             }
@@ -3997,6 +4015,12 @@ function TodayView({
         </div>
 
         <div className="interview-body">
+          {planningCoach.messages.length === 0 && planningCoach.suggestions.length === 0 && !planningCoach.loading && (
+            <EmptyState
+              icon={<Sparkles size={22} />}
+              text="选好上方范围 → 点「开始访谈」。AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。长期范围会逐个方向引导你列出可能遗忘的目标。"
+            />
+          )}
           {planningCoach.messages.length > 0 && (
             <div className="interview-messages">
               {planningCoach.messages.map((message, index) => (

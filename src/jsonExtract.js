@@ -57,3 +57,66 @@ export function tryExtractJson(content) {
     return null;
   }
 }
+
+// 从 open 位置（{ 或 [）开始，按字符串感知配平返回闭合下标；未闭合返回 -1。
+function matchBalancedEnd(s, start) {
+  const open = s[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+// 扫描一段文本里【所有顶层配平】的 JSON 对象/数组并逐个解析成功的返回（用于从推理链/夹叙夹议里捞 JSON）。
+export function extractJsonObjects(text) {
+  const s = String(text || "");
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === "{" || ch === "[") {
+      const end = matchBalancedEnd(s, i);
+      if (end > i) {
+        try { out.push(JSON.parse(s.slice(i, end + 1))); } catch { /* 跳过不合法片段 */ }
+        i = end + 1;
+        continue;
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+// 「有意义」的结果对象：含规划相关的答案键之一，用来把真正的回复和零碎片段（如 {"type":"add_goal"}）区分开。
+const MEANINGFUL_KEYS = [
+  "message", "actions", "items", "tasks", "goals", "busy", "busyBlocks",
+  "blocks", "questions", "taskAdjustments", "summary", "workStyle",
+];
+export function isMeaningfulJson(obj) {
+  return Boolean(obj) && typeof obj === "object" && !Array.isArray(obj) && MEANINGFUL_KEYS.some((k) => k in obj);
+}
+
+// 从可能包含多段 JSON 的文本（典型：推理模型把答案写进 reasoning）里挑出「最像最终答案」的对象：
+// 取最后一个含有意义键的对象；没有就取最后一个对象。
+export function richestJson(text) {
+  const objs = extractJsonObjects(text).filter((o) => o && typeof o === "object" && !Array.isArray(o));
+  const meaningful = objs.filter(isMeaningfulJson);
+  if (meaningful.length) return meaningful[meaningful.length - 1];
+  return objs.length ? objs[objs.length - 1] : null;
+}
