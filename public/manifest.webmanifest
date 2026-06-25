@@ -1,7 +1,7 @@
 {
   "name": "计划引航",
   "short_name": "引航",
-  "description": "引导式任务录入、目标拆解和自动时间规划工具。",
+  "description": "会追问、帮你把长期目标拆解成今日可执行日程的本地优先 AI 规划助手；支持 DeepSeek / 通义 / Kimi / OpenAI 多模型，数据存本地、无需账号。",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f7f4ec",
