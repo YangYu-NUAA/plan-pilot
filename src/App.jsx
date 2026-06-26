@@ -196,6 +196,31 @@ function nextWeekday(dateString, targetDay) {
   return addDays(dateString, delta);
 }
 
+// 把"日号"（1-31）解析到不早于 fromDate 的下一次出现：本月该日 < 今天则顺延下月；超过当月天数取月末。
+function nextDateWithDay(fromDate, day) {
+  if (!(day >= 1 && day <= 31)) return null;
+  const [y, m, d] = fromDate.split("-").map(Number);
+  let year = y;
+  let month = m;
+  if (day < d) {
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
+  }
+  const dim = new Date(year, month, 0).getDate(); // 该月实际天数
+  const dd = Math.min(day, dim);
+  return `${year}-${String(month).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+// 把"M月N日"解析到不早于 fromDate 的那一年（今年若已过则取明年）。
+function nextDateWithMonthDay(fromDate, month, day) {
+  if (!(month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;
+  const build = (yr) =>
+    `${yr}-${String(month).padStart(2, "0")}-${String(Math.min(day, new Date(yr, month, 0).getDate())).padStart(2, "0")}`;
+  let year = Number(fromDate.split("-")[0]);
+  if (build(year) < fromDate) year += 1;
+  return build(year);
+}
+
 function inferDateFromText(value, selectedDate) {
   const text = String(value || "").toLowerCase();
   const absolute = text.match(/\d{4}-\d{2}-\d{2}/);
@@ -210,6 +235,18 @@ function inferDateFromText(value, selectedDate) {
   if (/下周六|next saturday/.test(text)) return nextWeekday(selectedDate, 6);
   if (/下周日|下周天|next sunday/.test(text)) return nextWeekday(selectedDate, 0);
   if (/下周|next week/.test(text)) return nextWeekday(selectedDate, 1);
+  // "M月N日 / M月N号"
+  const md = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/);
+  if (md) {
+    const dt = nextDateWithMonthDay(selectedDate, Number(md[1]), Number(md[2]));
+    if (dt) return dt;
+  }
+  // "N号 / N日"（无月份，取下一次该日号；如"27号"）
+  const dom = text.match(/(\d{1,2})\s*[日号]/);
+  if (dom) {
+    const dt = nextDateWithDay(selectedDate, Number(dom[1]));
+    if (dt) return dt;
+  }
   return selectedDate;
 }
 
@@ -650,6 +687,37 @@ function parseTimeInSentence(sentence) {
   return null;
 }
 
+// 把"上午/下午/晚上"等模糊时段映射成默认时间窗——仅当句子没有具体钟点时兜底用，
+// 让"27号上午去华为"这类带模糊时段的固定事项也能落成时间轴上的块，而不是只当无时间任务。
+const ROUGH_TIME_WINDOWS = [
+  ["凌晨", "06:00", "08:00"],
+  ["早上", "08:00", "09:30"],
+  ["上午", "09:00", "12:00"],
+  ["中午", "12:00", "13:00"],
+  ["下午", "14:00", "18:00"],
+  ["傍晚", "17:00", "19:00"],
+  ["晚上", "19:00", "22:00"],
+];
+function roughTimeWindow(sentence) {
+  const text = String(sentence || "");
+  for (const [marker, start, end] of ROUGH_TIME_WINDOWS) {
+    if (text.includes(marker)) return { start, end };
+  }
+  return null;
+}
+
+// 去掉事项标题开头的日期/时段/钟点前缀，让标题干净（"27号上午去华为…" → "去华为…"），
+// 也避免同一事件因前缀不同（27号/28号）在去重时被当成不同标题。日期/时间已单独解析，不丢信息。
+function cleanEventTitle(sentence) {
+  let t = String(sentence || "").trim();
+  t = t.replace(/^(今天|明天|后天|大后天|下周[一二三四五六日天]?|本周[一二三四五六日天]?)/, "");
+  t = t.replace(/^\s*(\d{1,2}\s*月)?\s*\d{1,2}\s*[日号]/, "");
+  t = t.replace(/^\s*(凌晨|早上|上午|中午|下午|傍晚|晚上)/, "");
+  t = t.replace(/^\s*\d{1,2}\s*[:：.点时]\s*\d{0,2}\s*分?/, "");
+  t = t.trim();
+  return t || String(sentence || "").trim();
+}
+
 function extractBusyBlocksFromText(text, date, existingBlocks = []) {
   const existingKeys = new Set(
     existingBlocks
@@ -662,15 +730,23 @@ function extractBusyBlocksFromText(text, date, existingBlocks = []) {
     .map(normalizeSentence)
     .filter((sentence) => sentence && isBusySentence(sentence) && looksLikeSingleActionItem(sentence))
     .map((sentence) => {
-      const start = parseTimeInSentence(sentence);
-      if (!start) return null;
-      const end = toTime(toMinutes(start) + defaultBusyDuration(sentence));
+      let start = parseTimeInSentence(sentence);
+      let end;
+      if (start) {
+        end = toTime(toMinutes(start) + defaultBusyDuration(sentence));
+      } else {
+        // 没有具体钟点：用模糊时段（上午/下午…）兜底成一个时间窗块
+        const rough = roughTimeWindow(sentence);
+        if (!rough) return null;
+        start = rough.start;
+        end = rough.end;
+      }
       return {
         id: uid("block"),
         date,
         type: "busy",
         taskId: "",
-        title: sentence,
+        title: cleanEventTitle(sentence),
         start,
         end,
         auto: false,
@@ -751,7 +827,7 @@ function extractTimedTasksFromText(text, date, existingTasks = []) {
     .filter((sentence) => sentence && isMeetingSentence(sentence) && parseTimeInSentence(sentence))
     .map((sentence) => ({
       id: uid("task"),
-      title: sentence,
+      title: cleanEventTitle(sentence),
       estimateMinutes: defaultBusyDuration(sentence),
       priority: "high",
       goalId: "",
@@ -793,7 +869,7 @@ function extractActionTasksFromText(text, date, existingTasks = []) {
       const start = pinnableTimeForTitle(sentence, parseTimeInSentence(sentence));
       return {
         id: uid("task"),
-        title: sentence,
+        title: cleanEventTitle(sentence),
         estimateMinutes: estimateMinutesForTitle(sentence, 45),
         priority: start ? "high" : "medium",
         goalId: "",
@@ -1745,7 +1821,11 @@ function App() {
     const actionTasks = extractActionTasksFromText(taskText, selectedDate, baseTasks.concat(fixedTasks));
     const newTasks = fixedTasks.concat(actionTasks);
     const tasksAfter = mergeDuplicateTasks(baseTasks.concat(newTasks));
-    return { tasks: tasksAfter, blocks: blocksAfter, addedTaskCount: newTasks.length, addedBlockCount: blocksAfter.length - baseBlocks.length };
+    // 收集落到「非当前查看日」的日期，让保存提示能告诉用户去哪天查看（未来固定安排不在今天的时间轴上）。
+    const futureDates = Array.from(
+      new Set(recoveredBusy.concat(newTasks).map((x) => x.date).filter((d) => d && d !== selectedDate))
+    ).sort();
+    return { tasks: tasksAfter, blocks: blocksAfter, addedTaskCount: newTasks.length, addedBlockCount: blocksAfter.length - baseBlocks.length, futureDates };
   }
 
   function commitFixedPlanFromDayPlan() {
@@ -1755,7 +1835,15 @@ function App() {
   }
 
   function saveMorningPlan() {
-    const { addedTaskCount, addedBlockCount } = commitFixedPlanFromDayPlan();
+    const { addedTaskCount, addedBlockCount, futureDates } = commitFixedPlanFromDayPlan();
+    const mdLabel = (d) => {
+      const [, m, dd] = String(d).split("-");
+      return `${Number(m)}月${Number(dd)}日`;
+    };
+    const futureNote =
+      futureDates && futureDates.length
+        ? ` 其中有安排落在 ${futureDates.map(mdLabel).join("、")}——不在今天的时间轴上，切到那天查看。`
+        : "";
     patchPlanner((current) => ({
       dayPlans: {
         ...current.dayPlans,
@@ -1771,7 +1859,7 @@ function App() {
       error: "",
       message: `晨间规划已保存。${addedTaskCount ? `已自动加入 ${addedTaskCount} 个今日任务。` : "没有识别到新的具体任务。"}${
         addedBlockCount ? ` 已加入 ${addedBlockCount} 个不可用时间块。` : ""
-      }`,
+      }${futureNote}`,
     });
   }
 
@@ -1781,16 +1869,18 @@ function App() {
       .split(/[\n。；;]/)
       .map(normalizeSentence)
       // 带时间的承诺由 busy 块表示（占用时间轴），不再重复生成一个 kind:fixed 任务；只有无时间的承诺才落任务。
-      .filter((s) => s && isBusySentence(s) && !isMeetingSentence(s) && !parseTimeInSentence(s) && looksLikeSingleActionItem(s))
+      // 排除带模糊时段（上午/下午…）的句子：那些已由 busy 块以时间窗承接，避免重复落一个无时间任务
+      .filter((s) => s && isBusySentence(s) && !isMeetingSentence(s) && !parseTimeInSentence(s) && !roughTimeWindow(s) && looksLikeSingleActionItem(s))
       .map((s) => {
         const start = parseTimeInSentence(s);
         return {
           id: uid("task"),
-          title: s,
+          title: cleanEventTitle(s),
           estimateMinutes: start ? defaultBusyDuration(s) : 30,
           priority: "medium",
           goalId: "",
-          date,
+          // 按句子里的日期路由（"27号/明天/6月27日"→ 对应那天），无日期则落到当前查看日。
+          date: inferDateFromText(s, date),
           status: "open",
           kind: "fixed",
           createdAt: new Date().toISOString(),
@@ -1942,7 +2032,7 @@ function App() {
           {
             role: "system",
             content:
-              `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. If a large task (≥120 min) cannot fit in a single free interval, consider splitting it across two sessions (e.g. morning + afternoon). Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message.`,
+              `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. If a large task (≥120 min) cannot fit in a single free interval, consider splitting it across two sessions (e.g. morning + afternoon). Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message. If there are simply no tasks to place today, just return empty blocks with a brief note — do NOT generate questions asking the user to add todos.`,
           },
           {
             role: "user",
@@ -3242,13 +3332,18 @@ function App() {
             {activeView === "today" && (
               <div className="topbar-highlights">
                 {upcomingHighlights.busy && (
-                  <span className="topbar-highlight busy" title={upcomingHighlights.busy.title}>
+                  <button
+                    type="button"
+                    className="topbar-highlight busy"
+                    title={`${upcomingHighlights.busy.title} — 点击跳到 ${formatShortDate(upcomingHighlights.busy.date)}`}
+                    onClick={() => setSelectedDate(upcomingHighlights.busy.date)}
+                  >
                     <Clock3 size={12} />
                     {upcomingHighlights.busy.title.length > 12
                       ? upcomingHighlights.busy.title.slice(0, 12) + "..."
                       : upcomingHighlights.busy.title}
                     {" "}{formatShortDate(upcomingHighlights.busy.date)}
-                  </span>
+                  </button>
                 )}
                 {upcomingHighlights.week && (
                   <span className="topbar-highlight week" title={upcomingHighlights.week.title}>
@@ -3279,6 +3374,11 @@ function App() {
             <button title="后一天" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
               <ChevronRight size={18} />
             </button>
+            {selectedDate !== getLocalDate() && (
+              <button className="back-to-today" title="回到今天" onClick={() => setSelectedDate(getLocalDate())}>
+                回今日
+              </button>
+            )}
           </div>
         </header>
 
@@ -3647,12 +3747,15 @@ function TodayView({
     [planner.tasks, selectedDate],
   );
   // 逾期未完成：早于当前日期、仍未完成的任务（否则它们会从「今日」视图里彻底消失、被遗忘）
-  const overdueTasks = useMemo(() =>
-    planner.tasks
-      .filter((t) => t.date < selectedDate && t.status !== "done")
-      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : priorityOrder[b.priority] - priorityOrder[a.priority])),
-    [planner.tasks, selectedDate],
-  );
+  // 逾期相对【真正的今天】，且只在查看真正今天时才列——手动翻到明天/别的日期只是浏览，不该把今天的任务标成逾期。
+  // 真正的换天由系统午夜自动滚动（见 App 里的跨天定时器）触发，那时才算逾期。
+  const overdueTasks = useMemo(() => {
+    const realToday = getLocalDate();
+    if (selectedDate !== realToday) return [];
+    return planner.tasks
+      .filter((t) => t.date < realToday && t.status !== "done")
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : priorityOrder[b.priority] - priorityOrder[a.priority]));
+  }, [planner.tasks, selectedDate]);
   const [deferringTaskId, setDeferringTaskId] = useState(null);
   const [deferTaskDate, setDeferTaskDate] = useState("");
   const [editingTaskId, setEditingTaskId] = useState(null);
@@ -3816,16 +3919,25 @@ function TodayView({
           <div className="ai-suggestion-list">
             {aiTaskSuggestions.map((task) => (
               <article className="ai-suggestion" key={task.id}>
-                <strong>{task.title}</strong>
-                <span>
-                  {priorityLabel[task.priority]}优先级 · {task.estimateMinutes} 分钟
-                  {task.reason ? ` · ${task.reason}` : ""}
-                </span>
+                <div className="ai-suggestion-text">
+                  <strong>{task.title}</strong>
+                  <span>
+                    {priorityLabel[task.priority]}优先级 · {task.estimateMinutes} 分钟
+                    {task.reason ? ` · ${task.reason}` : ""}
+                  </span>
+                </div>
+                <button
+                  className="icon-button"
+                  title="不要这条"
+                  onClick={() => setAiTaskSuggestions((prev) => prev.filter((t) => t.id !== task.id))}
+                >
+                  <X size={16} />
+                </button>
               </article>
             ))}
             <button className="primary-action" onClick={acceptAiTaskSuggestions}>
               <Plus size={18} />
-              加入今日任务
+              加入这些任务
             </button>
           </div>
         )}
@@ -4225,7 +4337,11 @@ function TodayView({
             </ul>
             <div className="schedule-preview-meta">
               {schedulePreview.addedTaskCount ? `新增 ${schedulePreview.addedTaskCount} 个任务 · ` : ""}
-              {schedulePreview.questions?.length ? `${schedulePreview.questions.length} 项需你判断（应用后在下方处理）` : "全部已排入"}
+              {schedulePreview.questions?.length
+                ? `${schedulePreview.questions.length} 项需你判断（应用后在下方处理）`
+                : schedulePreview.blocks.filter((b) => b.date === selectedDate).length
+                  ? "全部已排入"
+                  : "今天没有需要安排的任务（写了未来日期的固定安排已落到对应日期，去那天查看）。"}
             </div>
             <div className="schedule-preview-actions">
               <button className="primary-action" onClick={confirmSchedulePreview}>
