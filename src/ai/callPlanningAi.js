@@ -46,7 +46,13 @@ export async function callPlanningAi({
       }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error?.message || data.error || "AI 调用失败。");
+    if (!response.ok) {
+      // HTTP 层错误（Key 无效 401 / 模型名不存在 404 / 地址错误）：重试无意义，直接报出上游原因
+      const message = data.error?.message || data.error || "AI 调用失败。";
+      const error = new Error(`(${response.status}) ${message}`);
+      error.fatal = true;
+      throw error;
+    }
 
     const top = data.choices?.[0] || {};
     const choice = top.message || {};
@@ -81,6 +87,7 @@ export async function callPlanningAi({
       result = await run();
     } catch (error) {
       lastError = error;
+      if (error.fatal) break; // HTTP 层错误（Key / 模型名 / 地址）重试无意义，直接失败
       continue;
     }
 
@@ -99,5 +106,6 @@ export async function callPlanningAi({
   }
 
   if (degenerateFallback) return degenerateFallback; // 三次都没拿到有意义结果，退而求其次
+  if (lastError?.fatal) throw lastError; // 配置类错误原样抛出（含上游状态码与原因），不附加重试提示
   throw new Error(`${lastError?.message || "AI 调用失败"}（已自动重试，仍未拿到可用 JSON；可换更稳的模型如 DeepSeek）。`);
 }

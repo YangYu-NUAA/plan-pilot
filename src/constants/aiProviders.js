@@ -121,9 +121,9 @@ export const AI_PROVIDER_PRESETS = {
   stepfun: {
     label: "阶跃星辰 StepFun",
     protocol: "openai-compatible",
-    baseUrl: "https://api.stepfun.ai/v1",
-    model: "step-3.5-flash",
-    note: "StepFun Chat Completions API。",
+    baseUrl: "https://api.stepfun.com/v1",
+    model: "step-3.7-flash",
+    note: "StepFun Chat Completions API，可用模型：step-3.7-flash / step-3.5-flash。Step Plan 订阅渠道（含 step-router-v1）请把 API 地址改为 https://api.stepfun.com/step_plan/v1。",
   },
   anthropic: {
     label: "Claude / Opus",
