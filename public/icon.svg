@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="计划引航">
-  <rect width="128" height="128" rx="28" fill="#20332f"/>
-  <path d="M34 79c14-27 30-40 60-48-8 27-22 45-48 62" fill="none" stroke="#f4d35e" stroke-width="10" stroke-linecap="round"/>
-  <path d="M32 96h64" stroke="#f7f4ec" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="82" cy="43" r="8" fill="#e8603f"/>
+  <rect width="128" height="128" rx="28" fill="#c05e3e"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#fffefb" stroke-width="8" opacity="0.55"/>
+  <path d="M79 49 66.5 66.5 49 79 61.5 61.5 79 49Z" fill="#fffefb"/>
+  <circle cx="64" cy="64" r="5" fill="#fffefb"/>
 </svg>
