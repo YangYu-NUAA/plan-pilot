@@ -30,9 +30,13 @@ npm run preview      # 预览生产构建
 
 ```
 src/
-├── App.jsx       # 整个应用逻辑（~4300 行），单文件架构
-├── main.jsx      # ReactDOM 入口 + service worker 注册
-└── styles.css    # 全局样式
+├── App.jsx                    # 根组件：状态、handler、导航轨与视图切换（~1800 行）
+├── views/                    # TodayView / GoalsView / ReviewView 三个视图
+├── components/               # SettingsDrawer、timeline/DayTimeline、gantt/GoalGantt、ui/（Metric、BrandMark、EmptyState、ErrorBoundary）
+├── planner/                  # 纯函数逻辑：scheduling（排程）、textExtract（文本抽取）、dedup（去重）、coachItems（AI 条目归一化）、gantt、hydration
+├── hooks/  utils/  constants/  app/  ai/   # 状态与基础设施
+├── main.jsx                   # ReactDOM 入口 + service worker 注册
+└── styles.css                 # 全局样式 + 设计令牌（含暖象牙/冷蓝/墨灰/暗夜四套主题）
 vite.config.js    # Vite 配置 + 自定义 API 代理中间件 + 文件持久化
 ```
 
@@ -52,7 +56,7 @@ AI 代理支持两种协议：
 
 代理处理两种协议的格式转换（OpenAI ↔ Anthropic），DeepSeek 的 thinking 参数透传，以及 Anthropic 响应的统一化。API Key 从前端请求体传入，或从环境变量 `AI_API_KEY` / `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY` 读取。
 
-### 数据模型 (`App.jsx:177-196`)
+### 数据模型（`src/app/initialState.js` 定义默认结构，`src/hooks/usePlannerStore.js` 负责持久化）
 
 `defaultState` 定义了完整数据结构：
 - `settings`: 工作时间区间和任务间隔
@@ -66,7 +70,7 @@ AI 代理支持两种协议：
 
 所有状态通过 `usePlannerStore`（本质是 `useState` + `useEffect` 写入 localStorage 并同步到文件系统）管理。状态更新通过 `patchPlanner` 函数，不可变方式合并。
 
-### 自动排期算法 (`App.jsx:1315-1410`)
+### 自动排期算法（`src/planner/scheduling.js`，入口 `buildAutoBlocks`）
 
 `buildAutoBlocks` 函数实现：
 1. 过滤当天未完成且未手动安排的任务

@@ -7,3 +7,4 @@ export const energyColorMap = { 偏低: "#6b4d9a", 正常: "#2f6e9c", 充沛: "#
 export function energyColor(level) {
   return energyColorMap[level] || "#2f6e9c";
 }
+export const dayNames = ["日", "一", "二", "三", "四", "五", "六"];

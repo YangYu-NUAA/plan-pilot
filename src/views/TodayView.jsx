@@ -1,0 +1,874 @@
+import { useState, useMemo, useEffect, useRef } from "react";
+import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Pencil, Plus, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
+import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
+import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
+import { parseTimeInSentence } from "../planner/textExtract.js";
+import { findSlotForTask } from "../planner/scheduling.js";
+import { isTicketPurchaseTask } from "../planningSemantics.js";
+import { emptyDraft } from "../coachHarness.js";
+import { EmptyState } from "../components/EmptyState.jsx";
+import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
+import { Metric } from "../components/ui/Metric.jsx";
+
+export function TodayView({
+  planner,
+  dayPlan,
+  selectedDate,
+  todayTasks,
+  todayBlocks,
+  activeGoals,
+  taskById,
+  goalById,
+  taskDraft,
+  blockDraft,
+  plannedMinutes,
+  scheduledMinutes,
+  workMinutes,
+  completedCount,
+  setTaskDraft,
+  setBlockDraft,
+  updateDayPlan,
+  saveMorningPlan,
+  addTask,
+  submitTaskForm,
+  updateTask,
+  deferTask,
+  deferTaskTo,
+  deleteTask,
+  autoSchedule,
+  schedulePreview,
+  scheduleUndo,
+  confirmSchedulePreview,
+  cancelSchedulePreview,
+  undoSchedule,
+  scheduleNotice,
+  setScheduleNotice,
+  scheduleQuestions,
+  setScheduleQuestions,
+  addManualBlock,
+  submitBlockForm,
+  addBlockDirectly,
+  deleteBlock,
+  updateBlock,
+  applyDragReschedule,
+  scheduleTaskAtMinute,
+  aiStatus,
+  aiTaskSuggestions,
+  generateTodayAiGuide,
+  acceptAiTaskSuggestions,
+  planningCoach,
+  setPlanningCoach,
+  startPlanningCoach,
+  sendPlanningCoachMessage,
+  acceptPlanningCoachSuggestions,
+  showAiFollowUp,
+  todayAiReply,
+  setTodayAiReply,
+  sendTodayAiReply,
+  loadSampleData,
+}) {
+  const overload = plannedMinutes > workMinutes;
+  const futureTasks = useMemo(() =>
+    planner.tasks
+      .filter((t) => t.date > selectedDate && t.status !== "done")
+      .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
+      .slice(0, 2),
+    [planner.tasks, selectedDate],
+  );
+  // 逾期未完成：早于当前日期、仍未完成的任务（否则它们会从「今日」视图里彻底消失、被遗忘）
+  // 逾期相对【真正的今天】，且只在查看真正今天时才列——手动翻到明天/别的日期只是浏览，不该把今天的任务标成逾期。
+  // 真正的换天由系统午夜自动滚动（见 App 里的跨天定时器）触发，那时才算逾期。
+  const overdueTasks = useMemo(() => {
+    const realToday = getLocalDate();
+    if (selectedDate !== realToday) return [];
+    return planner.tasks
+      .filter((t) => t.date < realToday && t.status !== "done")
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : priorityOrder[b.priority] - priorityOrder[a.priority]));
+  }, [planner.tasks, selectedDate]);
+  const [deferringTaskId, setDeferringTaskId] = useState(null);
+  const chatScrollRef = useRef(null);
+
+  // 访谈消息更新 / AI 输入中时，聊天区自动滚到底部
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [planningCoach.messages.length, planningCoach.loading]);
+  const [deferTaskDate, setDeferTaskDate] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editDraft, setEditDraft] = useState({ title: "", estimateMinutes: 60, priority: "medium", goalId: "" });
+  const [editingBlockId, setEditingBlockId] = useState(null);
+  const [deferringQuestionId, setDeferringQuestionId] = useState(null);
+  const [deferTargetDate, setDeferTargetDate] = useState("");
+  const [blockEditDraft, setBlockEditDraft] = useState({ title: "", start: "09:00", end: "10:00", type: "task" });
+
+  function startEditingBlock(block) {
+    setEditingBlockId(block.id);
+    setBlockEditDraft({
+      title: block.title || "",
+      start: block.start,
+      end: block.end,
+      type: block.type || "task",
+    });
+  }
+
+  function cancelEditingBlock() {
+    setEditingBlockId(null);
+  }
+
+  function saveEditingBlock(blockId) {
+    updateBlock(blockId, {
+      title: blockEditDraft.title.trim(),
+      start: blockEditDraft.start,
+      end: blockEditDraft.end,
+      type: blockEditDraft.type,
+    });
+    setEditingBlockId(null);
+  }
+
+  function startEditingTask(task) {
+    setEditingTaskId(task.id);
+    setEditDraft({
+      title: task.title,
+      estimateMinutes: Number(task.estimateMinutes) || 60,
+      priority: task.priority,
+      goalId: task.goalId || "",
+    });
+  }
+
+  function fillScheduleQuestion(question) {
+    const task = planner.tasks.find((t) => t.id === question.taskId) || {
+      title: question.title,
+      estimateMinutes: question.estimateMinutes,
+    };
+    const minutes = Math.max(10, Number(task.estimateMinutes) || Number(question.estimateMinutes) || 30);
+    const name = task.title || question.title || "这个任务";
+    // 购票类时间歧义：不自动放置，交给用户在表单里确认买票的执行时间。
+    if (isTicketPurchaseTask(task.title) && !parseTimeInSentence(task.title)) {
+      setBlockDraft((draft) => ({ ...draft, type: "task", taskId: question.taskId, title: "" }));
+      setScheduleNotice({ text: `「${name}」标题里的时间更像车次/出发时间。已填好下方表单，请手动选你真正要执行的时间再添加。`, tone: "info" });
+      return;
+    }
+    const slot = findSlotForTask(task, planner.settings, todayBlocks, selectedDate);
+    if (slot && addBlockDirectly({ type: "task", taskId: question.taskId, title: "", start: slot.start, end: slot.end })) {
+      setScheduleQuestions((qs) => qs.filter((q) => q.id !== question.id));
+      setScheduleNotice({ text: `已把「${name}」放到 ${slot.start}–${slot.end}。`, tone: "info" });
+      return;
+    }
+    // 放不下：明确说明原因和可行的下一步，而不是静默地只填个表单。
+    setBlockDraft((draft) => ({ ...draft, type: "task", taskId: question.taskId, title: "" }));
+    setScheduleNotice({
+      text: `今天剩余空档放不下「${name}」（需 ${minutes} 分钟连续时间）。可以：① 拆成更小的步骤分别安排；② 点「延期」改到其他日期；③ 先删掉或缩短当天某个时间块腾出连续时间。已填好下方表单，也可手动指定时间。`,
+      tone: "error",
+    });
+  }
+
+  function cancelEditingTask() {
+    setEditingTaskId(null);
+  }
+
+  function saveEditingTask(taskId) {
+    if (!editDraft.title.trim()) return;
+    updateTask(taskId, {
+      title: editDraft.title.trim(),
+      estimateMinutes: Number(editDraft.estimateMinutes) || 30,
+      priority: editDraft.priority,
+      goalId: editDraft.goalId || "",
+    });
+    setEditingTaskId(null);
+  }
+
+  return (
+    <div className="cockpit-grid">
+      <section className="coach-band">
+        <div className="coach-copy">
+          <div>
+            <p className="eyebrow">晨间问题</p>
+            <h2 style={{ color: energyColor(dayPlan.energy) }}>{formatHumanDate(selectedDate)}</h2>
+          </div>
+          <select
+            className="energy-select"
+            value={dayPlan.energy}
+            onChange={(event) => updateDayPlan({ energy: event.target.value })}
+            aria-label="今日精力"
+          >
+            {energyOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="question-grid">
+          <label>
+            固定安排
+            <textarea
+              value={dayPlan.fixed}
+              onChange={(event) => updateDayPlan({ fixed: event.target.value })}
+              placeholder="会议、通勤、已经约定的事"
+            />
+          </label>
+          <label>
+            今日最重要
+            <textarea
+              value={dayPlan.topThree}
+              onChange={(event) => updateDayPlan({ topThree: event.target.value })}
+              placeholder="最多写 1-3 件"
+            />
+          </label>
+          <label>
+            变化与风险
+            <textarea
+              value={dayPlan.changes}
+              onChange={(event) => updateDayPlan({ changes: event.target.value })}
+              placeholder="会影响本周、本月或长期目标的情况"
+            />
+          </label>
+        </div>
+        <div className="morning-actions">
+          <button className="primary-action" onClick={saveMorningPlan}>
+            <CheckCircle2 size={18} />
+            保存
+          </button>
+          <button className="secondary-action" onClick={generateTodayAiGuide} disabled={aiStatus.loading}>
+            <Sparkles size={18} />
+            {aiStatus.loading ? "AI 思考中" : "今日建议"}
+          </button>
+        </div>
+        {aiStatus.message && <span className={`ai-message ${aiStatus.loading ? "is-loading" : ""}`}>{aiStatus.message}</span>}
+        {aiStatus.error && <span className="ai-error">{aiStatus.error}</span>}
+        {showAiFollowUp && (
+          <form className="ai-followup-form" onSubmit={sendTodayAiReply}>
+            <textarea
+              value={todayAiReply}
+              onChange={(event) => setTodayAiReply(event.target.value)}
+              placeholder="回答 AI 的问题，或继续补充今天想推进的事（也可以是想做但一时难拆解的需求）；没有更多就回复“没有了”结束本轮。"
+            />
+            <div className="ai-followup-actions">
+              <button className="secondary-action" disabled={!todayAiReply.trim()}>
+                <Send size={18} />
+                发送并继续
+              </button>
+            </div>
+          </form>
+        )}
+        {aiTaskSuggestions.length > 0 && (
+          <div className="ai-suggestion-list">
+            {aiTaskSuggestions.map((task) => (
+              <article className="ai-suggestion" key={task.id}>
+                <div className="ai-suggestion-text">
+                  <strong>{task.title}</strong>
+                  <span>
+                    {priorityLabel[task.priority]}优先级 · {task.estimateMinutes} 分钟
+                    {task.reason ? ` · ${task.reason}` : ""}
+                  </span>
+                </div>
+                <button
+                  className="icon-button"
+                  title="不要这条"
+                  onClick={() => setAiTaskSuggestions((prev) => prev.filter((t) => t.id !== task.id))}
+                >
+                  <X size={16} />
+                </button>
+              </article>
+            ))}
+            <button className="primary-action" onClick={acceptAiTaskSuggestions}>
+              <Plus size={18} />
+              加入这些任务
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="panel interview-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">AI 规划访谈</p>
+            <h2>让模型主动问，再帮你拆</h2>
+          </div>
+          <select
+            value={planningCoach.scope}
+            onChange={(event) =>
+              setPlanningCoach((coach) => ({
+                ...coach,
+                scope: event.target.value,
+                messages: [],
+                suggestions: [],
+                draft: emptyDraft(),
+                error: "",
+              }))
+            }
+          >
+            <option value="today">今天</option>
+            <option value="week">本周</option>
+            <option value="month">月度</option>
+            <option value="long">长期</option>
+          </select>
+        </div>
+
+        <div className="interview-body">
+          {planningCoach.messages.length === 0 && planningCoach.suggestions.length === 0 && !planningCoach.loading && (
+            <EmptyState
+              icon={<Sparkles size={22} />}
+              text="选好上方范围 → 点「开始访谈」。AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。长期范围会逐个方向引导你列出可能遗忘的目标。"
+            />
+          )}
+          {(planningCoach.messages.length > 0 || planningCoach.loading) && (
+            <div className="chat-scroll" ref={chatScrollRef}>
+              <div className="interview-messages">
+                {planningCoach.messages.map((message, index) => (
+                  <div className={`chat-row ${message.role}`} key={`${message.role}-${index}`}>
+                    {message.role === "assistant" && (
+                      <span className="chat-avatar"><Sparkles size={13} /></span>
+                    )}
+                    <article className={`interview-message ${message.role}`}>
+                      {message.content}
+                    </article>
+                  </div>
+                ))}
+                {planningCoach.loading && (
+                  <div className="chat-row assistant">
+                    <span className="chat-avatar"><Sparkles size={13} /></span>
+                    <div className="chat-typing" aria-label="AI 正在输入">
+                      <i /><i /><i />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {planningCoach.error && <div className="ai-error block">{planningCoach.error}</div>}
+
+          {planningCoach.suggestions.length > 0 && (
+            <div className="coach-suggestions">
+              <p className="coach-suggestions-caption">AI 建议 · 确认后点「加入计划」落库</p>
+              {planningCoach.suggestions.map((item) => (
+                <article className="coach-suggestion" key={item.id}>
+                  <strong>{item.title}</strong>
+                  <span>
+                    {item.kind === "goal"
+                      ? `${goalTypeLabel[item.type]}目标 · ${priorityLabel[item.priority]}优先级`
+                      : item.kind === "busy"
+                        ? `${item.start}-${item.end} · 固定安排`
+                        : `${item.date} · ${item.estimateMinutes} 分钟 · ${priorityLabel[item.priority]}优先级`}
+                  </span>
+                </article>
+              ))}
+              <button className="primary-action" onClick={acceptPlanningCoachSuggestions}>
+                <Plus size={18} />
+                加入计划
+              </button>
+            </div>
+          )}
+        </div>
+
+        <form className="interview-form" onSubmit={sendPlanningCoachMessage}>
+          <textarea
+            value={planningCoach.input}
+            onChange={(event) => setPlanningCoach((coach) => ({ ...coach, input: event.target.value }))}
+            placeholder="回答 AI 的问题，或直接描述：今天/本周/月度/长期想推进什么"
+          />
+          <div className="interview-actions">
+            <button className="primary-action" disabled={planningCoach.loading || !planningCoach.input.trim()}>
+              <Send size={18} />
+              发送
+            </button>
+            <button type="button" className="secondary-action" onClick={startPlanningCoach} disabled={planningCoach.loading}>
+              <Sparkles size={18} />
+              {planningCoach.loading ? "AI 思考中" : "开始访谈"}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="stats-row">
+        <Metric label="完成/总数" value={`${completedCount}/${todayTasks.length}`} />
+        <Metric label="预计" value={`${plannedMinutes} 分钟`} tone={overload ? "danger" : ""} />
+        <Metric label="已排" value={`${scheduledMinutes} 分钟`} />
+        <Metric label="可用" value={`${workMinutes} 分钟`} />
+      </section>
+
+      <section className="panel task-panel">
+        <div className="section-heading">
+          <div>
+            <h2>今天要做什么</h2>
+          </div>
+        </div>
+        <form className="task-form" onSubmit={addTask}>
+          <input
+            name="title"
+            value={taskDraft.title}
+            onChange={(event) => setTaskDraft((draft) => ({ ...draft, title: event.target.value }))}
+            placeholder="输入一个新任务"
+          />
+          <input
+            name="estimateMinutes"
+            type="number"
+            min="10"
+            step="10"
+            value={taskDraft.estimateMinutes}
+            onChange={(event) => setTaskDraft((draft) => ({ ...draft, estimateMinutes: event.target.value }))}
+            aria-label="预计分钟"
+          />
+          <select
+            name="priority"
+            value={taskDraft.priority}
+            onChange={(event) => setTaskDraft((draft) => ({ ...draft, priority: event.target.value }))}
+            aria-label="优先级"
+          >
+            <option value="high">高优先级</option>
+            <option value="medium">中优先级</option>
+            <option value="low">低优先级</option>
+          </select>
+          <select
+            name="goalId"
+            value={taskDraft.goalId}
+            onChange={(event) => setTaskDraft((draft) => ({ ...draft, goalId: event.target.value }))}
+            aria-label="关联目标"
+          >
+            <option value="">不关联目标</option>
+            {activeGoals.map((goal) => (
+              <option key={goal.id} value={goal.id}>
+                {goalTypeLabel[goal.type]} · {goal.title}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            title="添加任务"
+            className="compact-action solid"
+            onClick={(event) => {
+              event.preventDefault();
+              submitTaskForm(event.currentTarget.form);
+            }}
+          >
+            <Plus size={18} />
+            添加
+          </button>
+        </form>
+
+        <div className="task-list">
+          {overdueTasks.length > 0 && (
+            <div className="overdue-zone">
+              <div className="overdue-head">
+                <Clock3 size={14} />
+                逾期未完成 · {overdueTasks.length}
+              </div>
+              {overdueTasks.map((task) => (
+                <article className="overdue-item" key={task.id}>
+                  <div className="overdue-main">
+                    <strong>{task.title}</strong>
+                    <span className="overdue-meta">
+                      原定 {formatShortDate(task.date)} · {priorityLabel[task.priority]} · {task.estimateMinutes} 分钟
+                    </span>
+                  </div>
+                  <div className="overdue-actions">
+                    <button className="icon-button solid" title="顺延到今天" onClick={() => deferTaskTo(task.id, selectedDate)}>
+                      <Plus size={16} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="改到指定日期"
+                      onClick={() => {
+                        setDeferringTaskId((id) => (id === task.id ? null : task.id));
+                        setDeferTaskDate(addDays(selectedDate, 1));
+                      }}
+                    >
+                      <CalendarDays size={16} />
+                    </button>
+                    <button className="icon-button danger" title="删除任务" onClick={() => deleteTask(task.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  {deferringTaskId === task.id && (
+                    <div className="defer-picker">
+                      <input type="date" value={deferTaskDate} onChange={(e) => setDeferTaskDate(e.target.value)} />
+                      <button
+                        className="primary-action"
+                        onClick={() => {
+                          if (deferTaskDate) deferTaskTo(task.id, deferTaskDate);
+                          setDeferringTaskId(null);
+                        }}
+                      >
+                        确认
+                      </button>
+                      <button className="secondary-action" onClick={() => setDeferringTaskId(null)}>取消</button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+          {todayTasks.length === 0 && (
+            <EmptyState
+              icon={<Target size={22} />}
+              text="先写下今天的一件具体工作。第一次用？可以填入示例数据看看完整效果。"
+              action={
+                loadSampleData && (
+                  <button type="button" className="secondary-action empty-state-action" onClick={loadSampleData}>
+                    <Sparkles size={16} />
+                    一键填入示例一天
+                  </button>
+                )
+              }
+            />
+          )}
+          {todayTasks
+            .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
+            .map((task) => {
+              const isEditing = editingTaskId === task.id;
+              const parentGoal = task.goalId && goalById[task.goalId];
+
+              if (isEditing) {
+                return (
+                  <article className="task-item editing" key={task.id}>
+                    <div className="edit-task-form">
+                      <input
+                        value={editDraft.title}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
+                        placeholder="任务标题"
+                      />
+                      <div className="edit-task-row">
+                        <input
+                          type="number"
+                          min="10"
+                          step="10"
+                          value={editDraft.estimateMinutes}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, estimateMinutes: Number(e.target.value) }))}
+                          aria-label="预计分钟"
+                        />
+                        <select
+                          value={editDraft.priority}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, priority: e.target.value }))}
+                          aria-label="优先级"
+                        >
+                          <option value="high">高</option>
+                          <option value="medium">中</option>
+                          <option value="low">低</option>
+                        </select>
+                        <select
+                          value={editDraft.goalId}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, goalId: e.target.value }))}
+                          aria-label="关联目标"
+                        >
+                          <option value="">无关联</option>
+                          {activeGoals.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {goalTypeLabel[g.type]} · {g.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="edit-task-actions">
+                        <button className="secondary-action" onClick={() => saveEditingTask(task.id)}>
+                          <CheckCircle2 size={16} />
+                          保存
+                        </button>
+                        <button className="icon-button" onClick={cancelEditingTask}>
+                          <X size={17} />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              }
+
+              return (
+              <article
+                className={`task-item is-draggable ${task.status === "done" ? "done" : ""}${task.kind === "fixed" ? " fixed" : ""}${task.kind !== "fixed" ? " priority-" + task.priority : ""}`}
+                key={task.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", task.id);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                title="拖到右侧时间轴可安排到具体时间"
+              >
+                <button
+                  type="button"
+                  className={`check-button${task.status === "done" ? " is-done" : ""}`}
+                  role="checkbox"
+                  aria-checked={task.status === "done"}
+                  aria-label={task.status === "done" ? "标记未完成" : "标记完成"}
+                  title={task.status === "done" ? "标记未完成" : "标记完成"}
+                  onClick={() => updateTask(task.id, { status: task.status === "done" ? "open" : "done" })}
+                >
+                  {task.status === "done" ? <CheckSquare size={20} /> : <Square size={20} />}
+                </button>
+                <div className="task-main">
+                  <strong>{task.title}</strong>
+                  <span className="task-meta">
+                    {task.kind === "fixed" ? (
+                      <span className="task-fixed-badge">固定</span>
+                    ) : (
+                      <span className={`priority-badge ${task.priority}`}>{priorityLabel[task.priority]}</span>
+                    )}
+                    <span>{task.estimateMinutes} 分钟</span>
+                    {parentGoal && (
+                      <span className="task-goal-link">
+                        <Target size={12} />
+                        {parentGoal.title}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
+                  <Pencil size={17} />
+                </button>
+                <button title="顺延到明天" className="icon-button" onClick={() => deferTask(task.id)}>
+                  <SkipForward size={17} />
+                </button>
+                <button title="删除任务" className="icon-button danger" onClick={() => deleteTask(task.id)}>
+                  <Trash2 size={17} />
+                </button>
+              </article>
+            );
+            })}
+        {futureTasks.length > 0 && (
+          <>
+            <div className="future-divider">未来待办</div>
+            {futureTasks.map((task) => (
+              <article className="task-item future" key={task.id}>
+                <div className="future-placeholder" />
+                <div className="task-main">
+                  <strong>{task.title}</strong>
+                  <span className="task-meta">
+                    <span className={`priority-badge ${task.priority}`}>{priorityLabel[task.priority]}</span>
+                    <span>{task.estimateMinutes} 分钟</span>
+                    <span className="task-goal-link">{formatShortDate(task.date)}</span>
+                  </span>
+                </div>
+                <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
+                  <Pencil size={17} />
+                </button>
+                <button title="安排到今天" className="icon-button solid" onClick={() => deferTaskTo(task.id, selectedDate)}>
+                  <Plus size={17} />
+                </button>
+                <button title="删除任务" className="icon-button danger" onClick={() => deleteTask(task.id)}>
+                  <Trash2 size={17} />
+                </button>
+              </article>
+            ))}
+          </>
+        )}
+        </div>
+      </section>
+
+      <section className="panel schedule-panel">
+        <div className="section-heading">
+          <div>
+            <h2>时间分配</h2>
+          </div>
+          <button className="secondary-action" onClick={autoSchedule} disabled={aiStatus.loading || Boolean(schedulePreview)}>
+            <Sparkles size={18} />
+            {aiStatus.loading ? "正在生成预览" : "自动安排"}
+          </button>
+        </div>
+
+        {scheduleNotice.text && (
+          <div className={`schedule-notice ${scheduleNotice.tone === "error" ? "is-error" : "is-info"}`} role="status">
+            <span>{scheduleNotice.text}</span>
+            <button
+              type="button"
+              className="schedule-notice-close"
+              aria-label="关闭提示"
+              onClick={() => setScheduleNotice({ text: "", tone: "" })}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {schedulePreview && (
+          <div className="schedule-preview">
+            <div className="schedule-preview-head">
+              <strong>排期预览（未应用）</strong>
+              <span>确认后才会改动你的时间轴。</span>
+            </div>
+            <ul className="schedule-preview-list">
+              {[...schedulePreview.blocks]
+                .filter((block) => block.date === selectedDate)
+                .sort((a, b) => toMinutes(a.start) - toMinutes(b.start))
+                .map((block) => {
+                  const previewTask = schedulePreview.tasks.find((task) => task.id === block.taskId);
+                  const name = previewTask?.title || block.title || (block.type === "busy" ? "固定占用" : "任务");
+                  return (
+                    <li key={block.id} className={block.type === "busy" ? "busy" : ""}>
+                      <span className="preview-time">{block.start}–{block.end}</span>
+                      <span className="preview-name">{name}</span>
+                    </li>
+                  );
+                })}
+            </ul>
+            <div className="schedule-preview-meta">
+              {schedulePreview.addedTaskCount ? `新增 ${schedulePreview.addedTaskCount} 个任务 · ` : ""}
+              {schedulePreview.questions?.length
+                ? `${schedulePreview.questions.length} 项需你判断（应用后在下方处理）`
+                : schedulePreview.blocks.filter((b) => b.date === selectedDate).length
+                  ? "全部已排入"
+                  : "今天没有需要安排的任务（写了未来日期的固定安排已落到对应日期，去那天查看）。"}
+            </div>
+            <div className="schedule-preview-actions">
+              <button className="primary-action" onClick={confirmSchedulePreview}>
+                <CheckCircle2 size={18} />
+                确认应用
+              </button>
+              <button className="secondary-action" onClick={cancelSchedulePreview}>
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {scheduleUndo && !schedulePreview && (
+          <div className="schedule-undo">
+            <span>已应用自动安排。</span>
+            <button className="secondary-action" onClick={undoSchedule}>撤销自动安排</button>
+          </div>
+        )}
+
+        <form className="block-form" onSubmit={addManualBlock}>
+          <select
+            name="type"
+            value={blockDraft.type}
+            onChange={(event) => setBlockDraft((draft) => ({ ...draft, type: event.target.value }))}
+            aria-label="时间块类型"
+          >
+            <option value="task">任务时间块</option>
+            <option value="busy">不可用时间</option>
+          </select>
+          <select
+            name="taskId"
+            value={blockDraft.taskId}
+            onChange={(event) => setBlockDraft((draft) => ({ ...draft, taskId: event.target.value }))}
+            aria-label="选择任务"
+            disabled={blockDraft.type === "busy"}
+          >
+            <option value="">自定义时间块</option>
+            {todayTasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.title}
+              </option>
+            ))}
+          </select>
+          <input
+            name="title"
+            value={blockDraft.title}
+            onChange={(event) => setBlockDraft((draft) => ({ ...draft, title: event.target.value }))}
+            placeholder={blockDraft.type === "busy" ? "监考、会议、通勤" : "可选标题"}
+          />
+          <input
+            name="start"
+            type="time" lang="zh-CN"
+            value={blockDraft.start}
+            onChange={(event) => setBlockDraft((draft) => ({ ...draft, start: event.target.value }))}
+          />
+          <input
+            name="end"
+            type="time" lang="zh-CN"
+            value={blockDraft.end}
+            onChange={(event) => setBlockDraft((draft) => ({ ...draft, end: event.target.value }))}
+          />
+          <button
+            title="加入时间块"
+            className="compact-action solid"
+            onClick={(event) => {
+              event.preventDefault();
+              submitBlockForm(event.currentTarget.form);
+            }}
+          >
+            <Plus size={18} />
+            添加
+          </button>
+        </form>
+
+        {scheduleQuestions.length > 0 && (
+          <div className="schedule-questions">
+            <div>
+              <strong>需要你判断放在哪里</strong>
+              <span>这些任务暂时不适合自动安排。</span>
+            </div>
+            {scheduleQuestions.map((question) => (
+              <article className="schedule-question" key={question.id}>
+                <div>
+                  <strong>{question.title}</strong>
+                  <span>
+                    {question.estimateMinutes} 分钟 · {question.reason}
+                  </span>
+                </div>
+                <div className="schedule-question-actions">
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={() => fillScheduleQuestion(question)}
+                  >
+                    今日
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={() => {
+                      setDeferringQuestionId(question.id);
+                      setDeferTargetDate(addDays(selectedDate, 1));
+                    }}
+                  >
+                    延期
+                  </button>
+                </div>
+                {deferringQuestionId === question.id && (
+                  <div className="defer-picker" style={{ gridColumn: "1 / -1" }}>
+                    <input
+                      type="date"
+                      value={deferTargetDate}
+                      onChange={(e) => setDeferTargetDate(e.target.value)}
+                    />
+                    <button className="primary-action" onClick={() => {
+                      deferTaskTo(question.taskId, deferTargetDate);
+                      setScheduleQuestions((qs) => qs.filter((q) => q.id !== question.id));
+                      setDeferringQuestionId(null);
+                    }}>确认</button>
+                    <button className="secondary-action" onClick={() => setDeferringQuestionId(null)}>取消</button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
+        {editingBlockId && (
+          <div className="dt-editbar">
+            <input type="time" lang="zh-CN" value={blockEditDraft.start}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, start: e.target.value }))} aria-label="开始时间" />
+            <input type="time" lang="zh-CN" value={blockEditDraft.end}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, end: e.target.value }))} aria-label="结束时间" />
+            <select value={blockEditDraft.type}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, type: e.target.value }))}>
+              <option value="task">任务</option>
+              <option value="busy">不可用</option>
+            </select>
+            <input className="dt-edit-title" value={blockEditDraft.title}
+              onChange={(e) => setBlockEditDraft((d) => ({ ...d, title: e.target.value }))} placeholder="标题（可选）" />
+            <button className="btn-text" onClick={() => saveEditingBlock(editingBlockId)}>保存</button>
+            <button className="btn-text" onClick={cancelEditingBlock}>取消</button>
+          </div>
+        )}
+
+        <DayTimeline
+          blocks={todayBlocks}
+          taskById={taskById}
+          settings={planner.settings}
+          selectedDate={selectedDate}
+          onReschedule={applyDragReschedule}
+          onDropTask={scheduleTaskAtMinute}
+          onEdit={startEditingBlock}
+          onDelete={deleteBlock}
+          onToggleDone={(block) => {
+            const t = taskById[block.taskId];
+            if (t) updateTask(t.id, { status: t.status === "done" ? "open" : "done" });
+          }}
+        />
+      </section>
+    </div>
+  );
+}
+
