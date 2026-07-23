@@ -2867,3 +2867,82 @@ html[data-theme="night"] {
   background: var(--accent-soft); color: var(--accent);
   font-size: 13px; font-weight: 700;
 }
+
+/* ===== PiP 悬浮窗（Document Picture-in-Picture 内部） ===== */
+.pip-root {
+  box-sizing: border-box; height: 100vh; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 5px;
+  background: var(--surface); color: var(--text);
+  font-family: inherit; font-size: 13px;
+}
+.pip-head { display: flex; align-items: center; justify-content: space-between; }
+.pip-state {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: var(--text-muted);
+}
+.pip-state.is-now { color: var(--accent); }
+.pip-close {
+  display: grid; place-items: center; width: 22px; height: 22px;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--faint); cursor: pointer;
+}
+.pip-close:hover { color: var(--text); background: var(--surface-2); }
+.pip-title {
+  font-size: 14px; font-weight: 650; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pip-time { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pip-progress {
+  height: 5px; border-radius: 3px; overflow: hidden;
+  background: var(--surface-2); margin-top: 2px;
+}
+.pip-progress i {
+  display: block; height: 100%; border-radius: 3px;
+  background: var(--accent); transition: width .5s var(--ease-out);
+}
+.pip-actions { display: flex; gap: 8px; margin-top: 4px; }
+.pip-done {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 28px; padding: 0 14px;
+  border: 0; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.pip-done:hover { background: var(--accent-hover); }
+.pip-empty { color: var(--faint); font-size: 12px; margin: auto; }
+
+/* ===== 主动问候卡 ===== */
+.today-wrap {
+  display: flex; flex-direction: column; gap: 16px;
+  flex: 1; min-height: 0;
+}
+.today-wrap .cockpit-grid { width: 100%; }
+.greet-card {
+  display: flex; align-items: flex-start; gap: 14px;
+  width: 100%; max-width: 1560px; margin: 0 auto;
+  box-sizing: border-box;
+  padding: 16px 20px;
+  background: linear-gradient(120deg, var(--accent-soft), var(--surface) 65%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: var(--radius);
+  animation: fade-in-up var(--dur-med) var(--ease-out);
+}
+.greet-icon {
+  flex-shrink: 0; display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+}
+.greet-body { flex: 1; min-width: 0; }
+.greet-body p { margin: 0; line-height: 1.65; color: var(--text); }
+.greet-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.greet-dismiss {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border: 0; border-radius: 8px; background: transparent;
+  color: var(--text-muted); cursor: pointer;
+}
+.greet-dismiss:hover { color: var(--text); background: var(--surface-2); }
+.greet-mute {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--faint); font-size: 12px; padding: 0 6px;
+}
+.greet-mute:hover { color: var(--text-muted); }

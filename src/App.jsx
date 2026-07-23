@@ -1796,6 +1796,9 @@ function App() {
             sendTodayAiReply={sendTodayAiReply}
             loadSampleData={loadSampleData}
             onStartFocus={startFocus}
+            ai={planner.ai}
+            localAiKey={localAiKey}
+            serverAiKeyLoaded={serverAiKeyLoaded}
           />
         )}
 
