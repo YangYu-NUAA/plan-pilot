@@ -443,36 +443,49 @@ function App() {
       });
   }
 
-  // 一键填入示例数据：给新用户一个「有内容的一天」来体验时间轴、任务与目标联动
+  // 一键填入示例数据：给新用户一个「有内容的一天」来体验时间轴、任务与目标联动。
+  // 目标带日期跨度与父子层级，保证甘特图也有完整内容可看。
   function loadSampleData() {
     const now = new Date().toISOString();
+    const day = (offset) => addDays(selectedDate, offset);
     const longGoal = {
       id: uid("goal"), title: "完成项目申请书并提交（示例）", type: "long", parentId: "",
-      priority: "high", startDate: "", endDate: "", status: "active", progress: 0, createdAt: now,
+      priority: "high", startDate: day(-14), endDate: day(35), status: "active", progress: 0, createdAt: now,
+    };
+    const monthGoal = {
+      id: uid("goal"), title: "写出申请书初稿（示例）", type: "month", parentId: longGoal.id,
+      priority: "high", startDate: day(-7), endDate: day(14), status: "active", progress: 0, createdAt: now,
     };
     const weekGoal = {
-      id: uid("goal"), title: "写出申请书初稿框架（示例）", type: "week", parentId: longGoal.id,
-      priority: "high", startDate: "", endDate: "", status: "active", progress: 0, createdAt: now,
+      id: uid("goal"), title: "完成「研究背景」与「技术路线」两节（示例）", type: "week", parentId: monthGoal.id,
+      priority: "high", startDate: day(-2), endDate: day(4), status: "active", progress: 0, createdAt: now,
     };
-    const task1 = {
-      id: uid("task"), title: "写申请书「研究背景」小节（示例）", estimateMinutes: 60, priority: "high",
-      goalId: weekGoal.id, date: selectedDate, status: "open", createdAt: now,
+    const lifeGoal = {
+      id: uid("goal"), title: "恢复规律运动（示例）", type: "long", parentId: "",
+      priority: "medium", startDate: day(-10), endDate: day(50), status: "active", progress: 0, createdAt: now,
     };
-    const task2 = {
-      id: uid("task"), title: "整理上次组会反馈并更新大纲（示例）", estimateMinutes: 30, priority: "medium",
-      goalId: weekGoal.id, date: selectedDate, status: "open", createdAt: now,
-    };
-    const task3 = {
-      id: uid("task"), title: "回复合作者邮件（示例）", estimateMinutes: 15, priority: "low",
-      goalId: "", date: selectedDate, status: "open", createdAt: now,
-    };
+    const mkTask = (title, estimateMinutes, priority, goalId, date, status = "open") => ({
+      id: uid("task"), title, estimateMinutes, priority, goalId, date, status, createdAt: now,
+    });
+    const task1 = mkTask("写申请书「研究背景」小节（示例）", 90, "high", weekGoal.id, selectedDate);
+    const task2 = mkTask("整理上次组会反馈并更新大纲（示例）", 45, "medium", weekGoal.id, selectedDate);
+    const task3 = mkTask("回复合作者邮件（示例）", 15, "low", "", selectedDate);
+    const task4 = mkTask("慢跑 5 公里（示例）", 40, "medium", lifeGoal.id, selectedDate);
+    const task5 = mkTask("精读 2 篇参考文献并做笔记（示例）", 60, "high", monthGoal.id, day(1));
+    const task6 = mkTask("画技术路线流程图初稿（示例）", 75, "high", weekGoal.id, day(2));
+    const task7 = mkTask("预约下周组会讨论时间（示例）", 10, "low", "", day(1));
+    const taskDone = mkTask("收集近三年相关文献清单（示例）", 50, "medium", monthGoal.id, day(-1), "done");
     const blocks = [
       { id: uid("block"), taskId: "", title: "组会（示例）", type: "busy", date: selectedDate, start: "10:00", end: "11:00", auto: false },
-      { id: uid("block"), taskId: task1.id, title: task1.title, type: "task", date: selectedDate, start: "09:00", end: "10:00", auto: true },
+      { id: uid("block"), taskId: "", title: "午休（示例）", type: "busy", date: selectedDate, start: "12:00", end: "13:00", auto: false },
+      { id: uid("block"), taskId: task1.id, title: task1.title, type: "task", date: selectedDate, start: "09:00", end: "10:30", auto: true },
+      { id: uid("block"), taskId: task2.id, title: task2.title, type: "task", date: selectedDate, start: "11:00", end: "11:45", auto: true },
+      { id: uid("block"), taskId: task3.id, title: task3.title, type: "task", date: selectedDate, start: "14:00", end: "14:15", auto: true },
+      { id: uid("block"), taskId: task4.id, title: task4.title, type: "task", date: selectedDate, start: "17:30", end: "18:10", auto: true },
     ];
     patchPlanner((current) => ({
-      goals: current.goals.concat([longGoal, weekGoal]),
-      tasks: current.tasks.concat([task1, task2, task3]),
+      goals: current.goals.concat([longGoal, monthGoal, weekGoal, lifeGoal]),
+      tasks: current.tasks.concat([task1, task2, task3, task4, task5, task6, task7, taskDone]),
       blocks: current.blocks.concat(blocks),
     }));
   }

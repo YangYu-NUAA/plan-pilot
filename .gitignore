@@ -19,3 +19,4 @@ startup.sh
 scripts/
 .playwright-mcp/
 test-results/
+.DS_Store
