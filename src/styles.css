@@ -81,14 +81,27 @@
 }
 
 @keyframes pop-check {
-  0% { transform: scale(0.4); }
-  60% { transform: scale(1.25); }
+  0% { transform: scale(0.3) rotate(-8deg); }
+  55% { transform: scale(1.28) rotate(2deg); }
+  75% { transform: scale(0.94); }
   100% { transform: scale(1); }
 }
 
+/* 打卡瞬间色块从成功色扫过整行（克制的一次性反馈） */
+@keyframes done-sweep {
+  from { background: color-mix(in srgb, var(--success) 16%, transparent); }
+  to { background: var(--surface-2); }
+}
+
 @keyframes now-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.45); opacity: 0.65; }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.45); }
+}
+
+/* 「现在」线整体呼吸：线与圆点同频明暗（圆点在内部另做缩放） */
+@keyframes now-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
 /* 尊重系统减弱动态偏好 */
@@ -413,7 +426,7 @@ textarea {
 
 .settings-panel input,
 .settings-panel select {
-  height: 40px;
+  height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
@@ -494,6 +507,46 @@ textarea {
   gap: 6px;
 }
 
+/* 音效开关：checkbox 不吃 settings-panel 的整宽 40px 输入框样式，
+   改为一枚小勾选框 + 文字同行 */
+.settings-panel label.settings-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.settings-toggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 抽屉内的休息时段 / 周期安排输入框：与其他 recurring-form 输入一致——
+   紧凑 34px 高、暗色半透明底（不再用全局白底大输入框） */
+.breaks-panel input,
+.recurring-add-row input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  padding: 0 8px;
+  font-size: 12px;
+  color-scheme: dark;
+}
+.breaks-panel input::placeholder,
+.recurring-add-row input::placeholder { color: rgba(255, 255, 255, 0.45); }
+.recurring-add-row .compact-action,
+.breaks-panel .recurring-form-row .compact-action { min-height: 34px; }
+
 /* modal */
 .modal-overlay {
   position: fixed;
@@ -567,7 +620,7 @@ textarea {
 .ai-panel input,
 .ai-panel select {
   min-width: 0;
-  height: 40px;
+  height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
@@ -589,7 +642,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 36px;
   padding: 0 12px;
   border-radius: 8px;
   font-size: 13px;
@@ -664,7 +717,7 @@ textarea {
 
 .data-panel button,
 .data-panel label {
-  min-height: 40px;
+  min-height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   display: flex;
@@ -688,7 +741,7 @@ textarea {
 .workspace {
   display: flex;
   flex-direction: column;
-  padding: 28px;
+  padding: 22px;
   overflow-y: auto;
   /* 右上角一抹随主题变色的人造光，拉开空间层次 */
   background:
@@ -709,8 +762,8 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 24px;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
 .topbar h1,
@@ -722,9 +775,10 @@ textarea {
 }
 
 .topbar h1 {
-  font-size: clamp(24px, 3vw, 38px);
-  font-weight: 700;
-  line-height: 1.15;
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
   max-width: 760px;
 }
 
@@ -751,8 +805,8 @@ textarea {
 
 .date-switcher button,
 .icon-button {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border: 1px solid var(--border-strong);
@@ -794,9 +848,9 @@ textarea {
 }
 
 .compact-action {
-  min-height: 40px;
+  min-height: 36px;
   border: 1px solid var(--ink);
-  border-radius: 10px;
+  border-radius: 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -821,7 +875,7 @@ textarea {
   border-radius: 8px;
   background: var(--surface);
   color: var(--text);
-  padding: 10px 12px;
+  padding: 8px 11px;
 }
 
 .date-switcher input {
@@ -918,8 +972,8 @@ button.topbar-highlight:hover {
 .coach-band {
   grid-column: 1 / -1;
   display: grid;
-  gap: 18px;
-  padding: 22px;
+  gap: 14px;
+  padding: 18px;
 }
 
 .coach-copy {
@@ -1205,13 +1259,13 @@ button.topbar-highlight:hover {
 
 .primary-action,
 .secondary-action {
-  min-height: 42px;
+  min-height: 38px;
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 15px;
   font-weight: 700;
 }
 
@@ -1236,11 +1290,11 @@ button.topbar-highlight:hover {
 }
 
 .metric {
-  min-height: 86px;
+  min-height: 72px;
   display: grid;
   align-content: center;
-  gap: 4px;
-  padding: 18px;
+  gap: 3px;
+  padding: 12px 16px;
   border-right: 1px solid var(--border);
 }
 
@@ -1254,7 +1308,7 @@ button.topbar-highlight:hover {
 }
 
 .metric strong {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1265,7 +1319,7 @@ button.topbar-highlight:hover {
 
 .panel {
   min-width: 0;
-  padding: 20px;
+  padding: 16px;
 }
 
 .section-heading {
@@ -1273,7 +1327,7 @@ button.topbar-highlight:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .task-form,
@@ -1281,8 +1335,8 @@ button.topbar-highlight:hover {
 .goal-form,
 .breakdown-form {
   display: grid;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .task-form > *,
@@ -1293,7 +1347,13 @@ button.topbar-highlight:hover {
 }
 
 .task-form {
-  grid-template-columns: 96px 120px minmax(140px, 1fr) auto;
+  /* 固定列收窄 + 两个下拉改弹性，给「添加」按钮留出完整宽度 */
+  grid-template-columns: 72px minmax(88px, 0.9fr) minmax(0, 1.1fr) auto;
+}
+
+.task-form > .compact-action {
+  min-width: max-content; /* 按钮不被栅格压缩，「添加」二字完整显示 */
+  padding: 0 14px;
 }
 
 .task-form > input:first-child {
@@ -1626,19 +1686,24 @@ button.topbar-highlight:hover {
 
 .task-item {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 40px 40px 40px;
-  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 34px; /* 尾部操作按钮（专注/编辑/顺延/删除）按需自动占列 */
+  gap: 8px;
   align-items: center;
-  min-height: 64px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  min-height: 56px;
+  padding: 10px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  border-radius: 0;
+  background: transparent;
 }
+.task-item:last-child { border-bottom: 0; }
 
 .task-item.done {
   opacity: 0.75;
   background: var(--surface-2);
+  animation: done-sweep 0.7s var(--ease-out);
 }
 .task-item.done .task-main strong {
   text-decoration: line-through;
@@ -1651,11 +1716,11 @@ button.topbar-highlight:hover {
 }
 
 .task-item.priority-high {
-  border-left: 4px solid var(--danger-ink);
+  border-left: 4px solid var(--accent);
 }
 
 .task-item.priority-medium {
-  border-left: 4px solid var(--warning);
+  border-left: 4px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
 }
 
 .task-item.priority-low {
@@ -1693,19 +1758,19 @@ button.topbar-highlight:hover {
 
 .time-block {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 40px 40px;
-  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr) 34px 34px;
+  gap: 8px;
   align-items: center;
-  min-height: 64px;
-  padding: 12px;
+  min-height: 56px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
 }
 
 .check-button {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border: 0;
@@ -1745,7 +1810,8 @@ button.topbar-highlight:hover {
   font-size: 13px;
 }
 
-/* priority badges */
+/* priority badges — 克制配色：高优先级独占 accent，中/低收敛为灰度，
+   把色彩预算留给「当前进行中的块」（Linear 式色彩纪律） */
 .priority-badge {
   display: inline-flex;
   align-items: center;
@@ -1767,26 +1833,26 @@ button.topbar-highlight:hover {
 }
 
 .priority-badge.high {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .priority-badge.high::before {
-  background: var(--danger-ink);
+  background: var(--accent);
 }
 
 .priority-badge.medium {
-  background: var(--priority-medium-soft);
-  color: var(--priority-medium-ink);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
 }
 
 .priority-badge.medium::before {
-  background: var(--warning);
+  background: var(--text-muted);
 }
 
 .priority-badge.low {
-  background: var(--priority-low-soft);
-  color: var(--priority-low-ink);
+  background: color-mix(in srgb, var(--text-muted) 7%, transparent);
+  color: var(--faint);
 }
 
 .priority-badge.low::before {
@@ -2536,7 +2602,9 @@ textarea:focus-visible {
 .btn-text { border: 0; background: transparent; color: var(--accent); font-weight: 600; font-size: 13px; padding: 4px 8px; cursor: pointer; }
 
 /* 全天 00:00–24:00 较高，容器内部滚动（自动定位到「现在」），避免页面被一根 24 小时长条撑爆 */
-.day-timeline { position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; overflow-y: auto; scrollbar-gutter: stable; }
+.day-timeline {
+  position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; overflow-y: auto; scrollbar-gutter: stable;
+}
 .dt-hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hair); }
 .dt-hour span {
   position: relative; top: -8px; left: 4px; background: var(--surface); padding-right: 6px;
@@ -2545,19 +2613,18 @@ textarea:focus-visible {
 /* 半小时虚线刻度 */
 .dt-half {
   position: absolute; left: 46px; right: 2px;
-  border-top: 1px dashed color-mix(in srgb, var(--faint) 22%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--faint) 15%, transparent);
   pointer-events: none;
 }
-/* 工作时段背景带 */
+/* 工作时段背景带：只留一抹极浅的 accent 底色，不要边线 */
 .dt-seg {
   position: absolute; left: 46px; right: 2px;
-  background: color-mix(in srgb, var(--accent) 4.5%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+  border-radius: 6px;
   pointer-events: none; z-index: 1;
 }
-.dt-now { position: absolute; left: 46px; right: 2px; border-top: 1.5px solid var(--danger); z-index: 5; }
-.dt-now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: now-pulse 2.4s ease-in-out infinite; }
+.dt-now { position: absolute; left: 46px; right: 2px; border-top: 1px solid var(--danger); z-index: 5; animation: now-breathe 2.4s ease-in-out infinite; }
+.dt-now::before { content: ""; position: absolute; left: -4px; top: -3.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: now-pulse 2.4s ease-in-out infinite; }
 .dt-now b { position: absolute; right: 0; top: -9px; font-size: 10.5px; font-weight: 600; color: var(--danger); background: var(--surface); padding: 0 5px; }
 
 /* 外部任务拖入时的落点指示线（虚线 + 胶囊标签），不拦截指针事件以免影响 drop */
@@ -2581,15 +2648,33 @@ textarea:focus-visible {
   animation: fade-in var(--dur-med) ease-out;
 }
 .dt-blk:hover { box-shadow: 0 6px 18px rgba(38, 33, 24, .10); }
+/* 正在进行的块：accent 细边 + 柔和外发光，随呼吸节奏明暗 */
+@keyframes live-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+      0 0 10px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 58%, transparent),
+      0 0 22px color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+}
+.dt-blk.dt-live {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: fade-in var(--dur-med) ease-out, live-glow 2.8s ease-in-out infinite;
+}
 .dt-blk.dragging { cursor: grabbing; z-index: 10; opacity: .96; box-shadow: 0 12px 28px rgba(38, 33, 24, .18); transition: none; }
 .dt-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 9px; cursor: ns-resize; z-index: 3; }
 .dt-resize::after { content: ""; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 28px; height: 3px; border-radius: 3px; background: currentColor; opacity: 0; transition: opacity .12s; }
 .dt-blk:hover .dt-resize::after { opacity: .4; }
-.dt-body { min-width: 0; position: relative; z-index: 1; padding-right: 0; transition: padding-right .12s; }
-.dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }
+.dt-body { min-width: 0; position: relative; z-index: 1; padding-right: 0; transition: padding-left .12s, padding-right .12s; }
+/* 左边距统一：所有块静止时文字对齐同一竖线；勾选按钮悬停才浮现，
+   浮现时文字再整体右移让位（已完成块勾选常驻，保持让位）。 */
+.dt-blk:has(.dt-check):hover .dt-body,
+.dt-blk:has(.dt-check.is-done) .dt-body { padding-left: 22px; }
 .dt-blk:hover .dt-body { padding-right: var(--dt-actions-width); }
 .dt-bt { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dt-bm { font-size: 11.5px; opacity: .85; margin-top: 2px; }
+.dt-bm { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
 /* 紧凑块（< 54px，约 ≤45 分钟）：隐藏第二行时间，避免被裁掉；
    完整时间与时长仍可从块本身的 tooltip（title 属性）看到。 */
 .dt-blk.dt-compact { padding-top: 2px; padding-bottom: 2px; }
@@ -2615,23 +2700,38 @@ textarea:focus-visible {
   border: 0; border-radius: 6px; background: rgba(255, 255, 255, .55); color: inherit; cursor: pointer;
 }
 .dt-actions button:hover { background: rgba(255, 255, 255, .95); }
-.dt-deep { background: var(--deep-soft); box-shadow: inset 3px 0 0 var(--deep-bar); color: var(--deep-ink); }
-.dt-meet { background: var(--meet-soft); box-shadow: inset 3px 0 0 var(--meet-bar); color: var(--meet-ink); }
-.dt-busy { background: var(--busy-soft); box-shadow: inset 3px 0 0 var(--busy-bar); color: var(--busy-ink); }
-.dt-busy::after {
-  content: ""; position: absolute; inset: 0 0 0 3px;
-  background: repeating-linear-gradient(135deg, transparent, transparent 7px, rgba(164, 160, 148, .16) 7px, rgba(164, 160, 148, .16) 14px);
-  pointer-events: none;
+/* 时间块配色纪律：任务块统一 accent 浅底 + 细边（不再用左侧粗色条）；
+   高优先级仅以标题前的小圆点提示；会议/固定用中性冷灰；不可用块用
+   灰底 + 虚线边（去掉噪杂的斜纹）。 */
+.dt-deep,
+.dt-priority-high,
+.dt-priority-medium,
+.dt-priority-low {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--ink);
 }
-.dt-priority-high { background: var(--priority-high-soft); box-shadow: inset 3px 0 0 var(--priority-high-bar); color: var(--priority-high-ink); }
-.dt-priority-medium { background: var(--priority-medium-soft); box-shadow: inset 3px 0 0 var(--priority-medium-bar); color: var(--priority-medium-ink); }
-.dt-priority-low { background: var(--priority-low-soft); box-shadow: inset 3px 0 0 var(--priority-low-bar); color: var(--priority-low-ink); }
+.dt-priority-high .dt-bt::before {
+  content: ""; display: inline-block; vertical-align: 2px;
+  width: 6px; height: 6px; margin-right: 6px; border-radius: 50%;
+  background: var(--accent);
+}
+.dt-meet {
+  background: color-mix(in srgb, var(--info, #5b8ab5) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--info, #5b8ab5) 22%, transparent);
+  color: var(--ink);
+}
+.dt-busy {
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+}
 
 /* —— 今日页驾驶舱布局（两列：左日历主角 + 右控件栏 + 顶部统计条） —— */
 .cockpit-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.62fr) minmax(360px, 1fr);
-  gap: 22px;
+  gap: 16px;
   align-items: stretch;
   max-width: 1560px;
   margin: 0 auto;
@@ -2766,3 +2866,161 @@ html[data-theme="night"] {
 .empty-state-action {
   margin-top: 4px;
 }
+
+/* ===== 专注模式（FocusOverlay） ===== */
+.focus-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-items: center;
+  background: var(--bg);
+  animation: fade-in var(--dur-med) ease-out;
+}
+.focus-exit {
+  position: absolute; top: 20px; right: 20px;
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 50%;
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.focus-exit:hover { color: var(--text); border-color: var(--border-strong); }
+.focus-content { display: grid; justify-items: center; gap: 14px; padding: 24px; max-width: 560px; text-align: center; }
+.focus-goal {
+  margin: 0; color: var(--accent); font-size: 13px; font-weight: 700;
+  letter-spacing: .04em;
+}
+.focus-title {
+  margin: 0; font-size: clamp(24px, 3.4vw, 36px); font-weight: 650;
+  letter-spacing: -0.02em; line-height: 1.25; color: var(--ink);
+}
+.focus-ring { position: relative; margin: 18px 0 6px; animation: ai-breathe 3.2s ease-in-out infinite; }
+.focus-ring-track { stroke: var(--surface-2); }
+.focus-ring-bar { stroke: var(--accent); transition: stroke-dashoffset 1s linear; }
+.focus-ring.is-overtime .focus-ring-bar { stroke: var(--warning); }
+.focus-clock {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 4px;
+}
+.focus-clock strong {
+  font-size: 44px; font-weight: 650; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.focus-clock span { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.focus-actions { display: flex; gap: 12px; margin-top: 10px; }
+.focus-done {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 48px; padding: 0 28px;
+  border: 0; border-radius: var(--radius-pill);
+  background: var(--accent); color: #fff; font-size: 16px; font-weight: 700;
+  cursor: pointer; box-shadow: var(--shadow-md);
+  transition: background .15s, transform .12s var(--ease-spring);
+}
+.focus-done:hover { background: var(--accent-hover); }
+.focus-done:active { transform: scale(0.96); }
+.focus-extend {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 48px; padding: 0 20px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: border-color .15s;
+}
+.focus-extend:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 任务卡片上的专注入口：hover 时 accent 化 */
+.focus-entry:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ===== 顶栏完成环 ===== */
+.metric-ring { display: flex; align-items: center; gap: 12px; }
+.metric-ring svg { flex-shrink: 0; }
+.metric-ring .ring-track { stroke: var(--surface-2); }
+.metric-ring .ring-bar { stroke: var(--accent); transition: stroke-dashoffset .6s var(--ease-out); }
+.metric-ring.is-full .ring-bar { stroke: var(--success); }
+.metric-ring.is-full svg { animation: pop-check 0.5s var(--ease-spring); }
+.metric-ring-text { display: grid; }
+.metric-ring-text span { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.metric-ring-text strong { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+/* ===== 复盘 streak ===== */
+.streak-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 10px; padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 700;
+}
+
+/* ===== PiP 悬浮窗（Document Picture-in-Picture 内部） ===== */
+.pip-root {
+  box-sizing: border-box; height: 100vh; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 5px;
+  background: var(--surface); color: var(--text);
+  font-family: inherit; font-size: 13px;
+}
+.pip-head { display: flex; align-items: center; justify-content: space-between; }
+.pip-state {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: var(--text-muted);
+}
+.pip-state.is-now { color: var(--accent); }
+.pip-close {
+  display: grid; place-items: center; width: 22px; height: 22px;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--faint); cursor: pointer;
+}
+.pip-close:hover { color: var(--text); background: var(--surface-2); }
+.pip-title {
+  font-size: 14px; font-weight: 650; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pip-time { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pip-progress {
+  height: 5px; border-radius: 3px; overflow: hidden;
+  background: var(--surface-2); margin-top: 2px;
+}
+.pip-progress i {
+  display: block; height: 100%; border-radius: 3px;
+  background: var(--accent); transition: width .5s var(--ease-out);
+}
+.pip-actions { display: flex; gap: 8px; margin-top: 4px; }
+.pip-done {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 28px; padding: 0 14px;
+  border: 0; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.pip-done:hover { background: var(--accent-hover); }
+.pip-empty { color: var(--faint); font-size: 12px; margin: auto; }
+
+/* ===== 主动问候卡 ===== */
+.today-wrap {
+  display: flex; flex-direction: column; gap: 12px;
+  flex: 1; min-height: 0;
+}
+.today-wrap .cockpit-grid { width: 100%; }
+.greet-card {
+  display: flex; align-items: flex-start; gap: 14px;
+  width: 100%; max-width: 1560px; margin: 0 auto;
+  box-sizing: border-box;
+  padding: 16px 20px;
+  background: linear-gradient(120deg, var(--accent-soft), var(--surface) 65%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: var(--radius);
+  animation: fade-in-up var(--dur-med) var(--ease-out);
+}
+.greet-icon {
+  flex-shrink: 0; display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+}
+.greet-body { flex: 1; min-width: 0; }
+.greet-body p { margin: 0; line-height: 1.65; color: var(--text); }
+.greet-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.greet-dismiss {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border: 0; border-radius: 8px; background: transparent;
+  color: var(--text-muted); cursor: pointer;
+}
+.greet-dismiss:hover { color: var(--text); background: var(--surface-2); }
+.greet-mute {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--faint); font-size: 12px; padding: 0 6px;
+}
+.greet-mute:hover { color: var(--text-muted); }

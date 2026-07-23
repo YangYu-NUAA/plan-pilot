@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Pencil, Plus, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Pencil, Play, Plus, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
+import { playTick } from "../utils/soundFx.js";
 import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
 import { parseTimeInSentence } from "../planner/textExtract.js";
 import { findSlotForTask } from "../planner/scheduling.js";
@@ -8,7 +9,9 @@ import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
-import { Metric } from "../components/ui/Metric.jsx";
+import { Metric, MetricRing } from "../components/ui/Metric.jsx";
+import { PipWindow } from "../components/PipWindow.jsx";
+import { GreetingCard } from "../components/GreetingCard.jsx";
 
 export function TodayView({
   planner,
@@ -66,6 +69,10 @@ export function TodayView({
   setTodayAiReply,
   sendTodayAiReply,
   loadSampleData,
+  onStartFocus,
+  ai,
+  localAiKey,
+  serverAiKeyLoaded,
 }) {
   const overload = plannedMinutes > workMinutes;
   const futureTasks = useMemo(() =>
@@ -178,7 +185,16 @@ export function TodayView({
   }
 
   return (
-    <div className="cockpit-grid">
+    <div className="today-wrap">
+      <GreetingCard
+        planner={planner}
+        todayTasks={todayTasks}
+        todayBlocks={todayBlocks}
+        ai={ai}
+        apiKey={localAiKey}
+        serverKeyOk={serverAiKeyLoaded}
+      />
+      <div className="cockpit-grid">
       <section className="coach-band">
         <div className="coach-copy">
           <div>
@@ -382,7 +398,7 @@ export function TodayView({
       </section>
 
       <section className="stats-row">
-        <Metric label="完成/总数" value={`${completedCount}/${todayTasks.length}`} />
+        <MetricRing done={completedCount} total={todayTasks.length} />
         <Metric label="预计" value={`${plannedMinutes} 分钟`} tone={overload ? "danger" : ""} />
         <Metric label="已排" value={`${scheduledMinutes} 分钟`} />
         <Metric label="可用" value={`${workMinutes} 分钟`} />
@@ -591,7 +607,11 @@ export function TodayView({
                   aria-checked={task.status === "done"}
                   aria-label={task.status === "done" ? "标记未完成" : "标记完成"}
                   title={task.status === "done" ? "标记未完成" : "标记完成"}
-                  onClick={() => updateTask(task.id, { status: task.status === "done" ? "open" : "done" })}
+                  onClick={() => {
+                    const marking = task.status !== "done";
+                    updateTask(task.id, { status: marking ? "done" : "open" });
+                    if (marking) playTick(planner.settings);
+                  }}
                 >
                   {task.status === "done" ? <CheckSquare size={20} /> : <Square size={20} />}
                 </button>
@@ -612,6 +632,14 @@ export function TodayView({
                     )}
                   </span>
                 </div>
+                {onStartFocus && (() => {
+                  const focusableBlock = todayBlocks.find((b) => b.taskId === task.id && b.type !== "busy");
+                  return focusableBlock && task.status !== "done" ? (
+                    <button title="进入专注模式" className="icon-button focus-entry" onClick={() => onStartFocus(focusableBlock.id)}>
+                      <Play size={17} />
+                    </button>
+                  ) : null;
+                })()}
                 <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
                   <Pencil size={17} />
                 </button>
@@ -659,6 +687,15 @@ export function TodayView({
           <div>
             <h2>时间分配</h2>
           </div>
+          <PipWindow
+            blocks={planner.blocks}
+            taskById={taskById}
+            selectedDate={selectedDate}
+            onCompleteTask={(taskId) => {
+              updateTask(taskId, { status: "done" });
+              playTick(planner.settings);
+            }}
+          />
           <button className="secondary-action" onClick={autoSchedule} disabled={aiStatus.loading || Boolean(schedulePreview)}>
             <Sparkles size={18} />
             {aiStatus.loading ? "正在生成预览" : "自动安排"}
@@ -864,10 +901,16 @@ export function TodayView({
           onDelete={deleteBlock}
           onToggleDone={(block) => {
             const t = taskById[block.taskId];
-            if (t) updateTask(t.id, { status: t.status === "done" ? "open" : "done" });
+            if (t) {
+              const marking = t.status !== "done";
+              updateTask(t.id, { status: marking ? "done" : "open" });
+              if (marking) playTick(planner.settings);
+            }
           }}
+          onStartFocus={onStartFocus}
         />
       </section>
+      </div>
     </div>
   );
 }

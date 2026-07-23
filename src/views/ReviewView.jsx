@@ -1,9 +1,25 @@
-import { Moon, RefreshCw, Send } from "lucide-react";
-import { formatHumanDate } from "../utils/dateTime.js";
+import { useMemo } from "react";
+import { Flame, Moon, RefreshCw, Send } from "lucide-react";
+import { addDays, formatHumanDate, getLocalDate } from "../utils/dateTime.js";
+
+// 连续打卡天数：从今天往回数，每天至少完成 1 个任务，中断即停
+function computeStreak(tasks) {
+  const doneDates = new Set(tasks.filter((t) => t.status === "done").map((t) => t.date));
+  let streak = 0;
+  let cursor = getLocalDate();
+  // 今天还没完成不算中断，从昨天开始数
+  if (!doneDates.has(cursor)) cursor = addDays(cursor, -1);
+  while (doneDates.has(cursor)) {
+    streak += 1;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
 
 export function ReviewView({
   selectedDate,
   todayTasks,
+  allTasks,
   dayPlan,
   reviewDraft,
   setReviewDraft,
@@ -14,6 +30,7 @@ export function ReviewView({
 }) {
   const unfinished = todayTasks.filter((task) => task.status !== "done");
   const dailyReview = reviews.find((review) => review.date === selectedDate && review.type === "daily");
+  const streak = useMemo(() => computeStreak(allTasks || todayTasks), [allTasks, todayTasks]);
 
   return (
     <div className="review-layout">
@@ -89,6 +106,12 @@ export function ReviewView({
           <span>未完成：{unfinished.length}</span>
           <span>精力：{dayPlan.energy}</span>
         </div>
+        {streak > 0 && (
+          <span className="streak-badge" title="每天至少完成 1 个任务的连续天数">
+            <Flame size={14} />
+            连续 {streak} 天有产出
+          </span>
+        )}
         {dailyReview?.adjustments && (
           <div className="adjustment-callout">
             <Moon size={18} />

@@ -7,6 +7,8 @@ export const defaultState = {
     maxWorkMinutes: 600,
     // 显式休息时段（午休等）；空数组 = 按工作时段之间的间隙自动推断
     breaks: [],
+    // 打卡音效（Web Audio 合成，默认关闭）
+    soundFx: false,
   },
   ai: {
     enabled: true,

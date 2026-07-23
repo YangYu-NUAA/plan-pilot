@@ -158,6 +158,18 @@ export function SettingsDrawer({
               }
             />
           </label>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(planner.settings.soundFx)}
+              onChange={(event) =>
+                patchPlanner((current) => ({
+                  settings: { ...current.settings, soundFx: event.target.checked },
+                }))
+              }
+            />
+            打卡音效（完成时一声轻响）
+          </label>
           <label>
             短休息 (分钟)
             <input

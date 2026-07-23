@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckSquare, Clock3, Pencil, Square, Trash2 } from "lucide-react";
+import { CheckSquare, Clock3, Pencil, Play, Square, Trash2 } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../../utils/dateTime.js";
 import { isMeetingSentence } from "../../planningSemantics.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
 
-export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone }) {
+export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus }) {
   const PXH = 56; // 每小时像素
   const ppm = PXH / 60;
   const segs = settings.workSegments || [];
@@ -148,6 +148,8 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
         const cols = block._totalCols ?? 1;
         // 块太矮时进入紧凑模式：隐藏第二行 meta、标题垂直居中，避免文字被 overflow 裁掉
         const compact = h < 54;
+        // 正在进行的块（现在落在起止之间）：加发光边框，一眼定位当下
+        const isLive = nowMin != null && nowMin >= startMin && nowMin < endMin;
         // When overlapping, shift left/width so blocks render side-by-side.
         // Single blocks keep the original full-width layout (right: 2px).
         const blkStyle = cols > 1
@@ -161,7 +163,7 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
           : { top, height: h };
         return (
           <article
-            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}${compact ? " dt-compact" : ""}`}
+            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}${compact ? " dt-compact" : ""}${isLive ? " dt-live" : ""}`}
             key={block.id}
             style={blkStyle}
             title={`${title} · ${toTime(startMin)}–${toTime(endMin)}（${endMin - startMin} 分钟）`}
@@ -189,6 +191,11 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
               </div>
             </div>
             <div className="dt-actions">
+              {!busy && block.taskId && task && onStartFocus && (
+                <button title="进入专注模式" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onStartFocus(block.id); }}>
+                  <Play size={14} />
+                </button>
+              )}
               <button title="编辑" onPointerDown={(e) => e.stopPropagation()} onClick={() => onEdit(block)}>
                 <Pencil size={14} />
               </button>
