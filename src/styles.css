@@ -2552,12 +2552,6 @@ textarea:focus-visible {
 /* 全天 00:00–24:00 较高，容器内部滚动（自动定位到「现在」），避免页面被一根 24 小时长条撑爆 */
 .day-timeline {
   position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; overflow-y: auto; scrollbar-gutter: stable;
-  /* 未被安排的空白时段铺极浅斜纹，暗示「这里还空着」，比纯白更有设计语言 */
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0 10px,
-    color-mix(in srgb, var(--text-muted) 3.5%, transparent) 10px 11px
-  );
 }
 .dt-hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hair); }
 .dt-hour span {
@@ -2567,19 +2561,18 @@ textarea:focus-visible {
 /* 半小时虚线刻度 */
 .dt-half {
   position: absolute; left: 46px; right: 2px;
-  border-top: 1px dashed color-mix(in srgb, var(--faint) 22%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--faint) 15%, transparent);
   pointer-events: none;
 }
-/* 工作时段背景带 */
+/* 工作时段背景带：只留一抹极浅的 accent 底色，不要边线 */
 .dt-seg {
   position: absolute; left: 46px; right: 2px;
-  background: color-mix(in srgb, var(--accent) 4.5%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+  border-radius: 6px;
   pointer-events: none; z-index: 1;
 }
-.dt-now { position: absolute; left: 46px; right: 2px; border-top: 1.5px solid var(--danger); z-index: 5; }
-.dt-now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: now-pulse 2.4s ease-in-out infinite; }
+.dt-now { position: absolute; left: 46px; right: 2px; border-top: 1px solid var(--danger); z-index: 5; }
+.dt-now::before { content: ""; position: absolute; left: -4px; top: -3.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: now-pulse 2.4s ease-in-out infinite; }
 .dt-now b { position: absolute; right: 0; top: -9px; font-size: 10.5px; font-weight: 600; color: var(--danger); background: var(--surface); padding: 0 5px; }
 
 /* 外部任务拖入时的落点指示线（虚线 + 胶囊标签），不拦截指针事件以免影响 drop */
@@ -2611,7 +2604,7 @@ textarea:focus-visible {
 .dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }
 .dt-blk:hover .dt-body { padding-right: var(--dt-actions-width); }
 .dt-bt { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dt-bm { font-size: 11.5px; opacity: .85; margin-top: 2px; }
+.dt-bm { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
 /* 紧凑块（< 54px，约 ≤45 分钟）：隐藏第二行时间，避免被裁掉；
    完整时间与时长仍可从块本身的 tooltip（title 属性）看到。 */
 .dt-blk.dt-compact { padding-top: 2px; padding-bottom: 2px; }
@@ -2637,17 +2630,32 @@ textarea:focus-visible {
   border: 0; border-radius: 6px; background: rgba(255, 255, 255, .55); color: inherit; cursor: pointer;
 }
 .dt-actions button:hover { background: rgba(255, 255, 255, .95); }
-.dt-deep { background: var(--deep-soft); box-shadow: inset 3px 0 0 var(--deep-bar); color: var(--deep-ink); }
-.dt-meet { background: var(--meet-soft); box-shadow: inset 3px 0 0 var(--meet-bar); color: var(--meet-ink); }
-.dt-busy { background: var(--busy-soft); box-shadow: inset 3px 0 0 var(--busy-bar); color: var(--busy-ink); }
-.dt-busy::after {
-  content: ""; position: absolute; inset: 0 0 0 3px;
-  background: repeating-linear-gradient(135deg, transparent, transparent 7px, rgba(164, 160, 148, .16) 7px, rgba(164, 160, 148, .16) 14px);
-  pointer-events: none;
+/* 时间块配色纪律：任务块统一 accent 浅底 + 细边（不再用左侧粗色条）；
+   高优先级仅以标题前的小圆点提示；会议/固定用中性冷灰；不可用块用
+   灰底 + 虚线边（去掉噪杂的斜纹）。 */
+.dt-deep,
+.dt-priority-high,
+.dt-priority-medium,
+.dt-priority-low {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--ink);
 }
-.dt-priority-high { background: var(--priority-high-soft); box-shadow: inset 3px 0 0 var(--priority-high-bar); color: var(--priority-high-ink); }
-.dt-priority-medium { background: var(--priority-medium-soft); box-shadow: inset 3px 0 0 var(--priority-medium-bar); color: var(--priority-medium-ink); }
-.dt-priority-low { background: var(--priority-low-soft); box-shadow: inset 3px 0 0 var(--priority-low-bar); color: var(--priority-low-ink); }
+.dt-priority-high .dt-bt::before {
+  content: ""; display: inline-block; vertical-align: 2px;
+  width: 6px; height: 6px; margin-right: 6px; border-radius: 50%;
+  background: var(--accent);
+}
+.dt-meet {
+  background: color-mix(in srgb, var(--info, #5b8ab5) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--info, #5b8ab5) 22%, transparent);
+  color: var(--ink);
+}
+.dt-busy {
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+}
 
 /* —— 今日页驾驶舱布局（两列：左日历主角 + 右控件栏 + 顶部统计条） —— */
 .cockpit-grid {
