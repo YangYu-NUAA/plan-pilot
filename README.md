@@ -14,7 +14,32 @@
 
 贡献者：[@hrjtju](https://github.com/hrjtju)（任务编辑、目标视图、自动安排、设置等改进）、[@chen9527](https://github.com/ning-chen)（共享常量 / 助手重构、组件抽取）
 
+## 界面一览
+
+<p align="center">
+  <img src="docs/screenshots/today-sample.png" alt="今日视图：时间轴、任务列表与 AI 规划访谈" width="860">
+  <br><em>今日视图：拖拽时间轴 + 任务清单 + AI 规划访谈同屏协作</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/goals-gantt-sample.png" alt="目标甘特图：长期 / 月度 / 本周目标层层拆解" width="860">
+  <br><em>目标甘特图：长期 → 月度 → 本周，大目标一眼看到落点</em>
+</p>
+
+<details>
+<summary>首次打开的空状态（内置「一键填入示例一天」，点一下就能体验完整流程）</summary>
+<p align="center">
+  <img src="docs/screenshots/empty-state.png" alt="首次打开的空状态与引导" width="860">
+</p>
+</details>
+
 ## 版本更新
+
+### 2026-07-23
+
+- 时间块文字自适应：块内容改为整体垂直居中（高块不再头重脚轻）；高度不足约 45 分钟的块自动进入紧凑模式——隐藏第二行时间、收紧内边距与字号，只留一行标题，完整时间与时长移到悬停 tooltip，彻底修掉「45 分钟块底部时间被裁掉」的问题；勾选与编辑按钮同步垂直居中。
+- 示例数据升级：一键填入后甘特图也有完整内容——长期 / 月度 / 本周三级目标带日期跨度与父子层级，外加独立长期目标共 4 条甘特横条；8 个任务覆盖今天 / 明天 / 后天与已完成状态；6 个时间块含组会、午休与一个 45 分钟块（顺手演示紧凑模式）。
+- README 新增「界面一览」截图区。
 
 ### 2026-07-22
 

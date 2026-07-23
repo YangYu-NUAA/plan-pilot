@@ -146,6 +146,8 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
         else if (task?.priority === "low") cls = "priority-low";
         const col = block._col ?? 0;
         const cols = block._totalCols ?? 1;
+        // 块太矮时进入紧凑模式：隐藏第二行 meta、标题垂直居中，避免文字被 overflow 裁掉
+        const compact = h < 54;
         // When overlapping, shift left/width so blocks render side-by-side.
         // Single blocks keep the original full-width layout (right: 2px).
         const blkStyle = cols > 1
@@ -159,9 +161,10 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
           : { top, height: h };
         return (
           <article
-            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}`}
+            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}${compact ? " dt-compact" : ""}`}
             key={block.id}
             style={blkStyle}
+            title={`${title} · ${toTime(startMin)}–${toTime(endMin)}（${endMin - startMin} 分钟）`}
             onPointerDown={(e) => startDrag(e, block, "move")}
           >
             {!busy && block.taskId && task && onToggleDone && (
