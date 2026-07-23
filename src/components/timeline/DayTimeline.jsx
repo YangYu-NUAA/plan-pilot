@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckSquare, Clock3, Pencil, Square, Trash2 } from "lucide-react";
+import { CheckSquare, Clock3, Pencil, Play, Square, Trash2 } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../../utils/dateTime.js";
 import { isMeetingSentence } from "../../planningSemantics.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
 
-export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone }) {
+export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus }) {
   const PXH = 56; // 每小时像素
   const ppm = PXH / 60;
   const segs = settings.workSegments || [];
@@ -189,6 +189,11 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
               </div>
             </div>
             <div className="dt-actions">
+              {!busy && block.taskId && task && onStartFocus && (
+                <button title="进入专注模式" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onStartFocus(block.id); }}>
+                  <Play size={14} />
+                </button>
+              )}
               <button title="编辑" onPointerDown={(e) => e.stopPropagation()} onClick={() => onEdit(block)}>
                 <Pencil size={14} />
               </button>

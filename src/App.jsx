@@ -25,6 +25,8 @@ import { getAiProviderPreset } from "./constants/aiProviders.js";
 import { defaultState } from "./app/initialState.js";
 import { replaceRecurringBlocks } from "./planner/hydration.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
+import { FocusOverlay } from "./components/FocusOverlay.jsx";
+import { playTick } from "./utils/soundFx.js";
 import { useLocalAiKey } from "./hooks/useLocalAiKey.js";
 import { hydratePlannerState, usePlannerStore } from "./hooks/usePlannerStore.js";
 import { uid } from "./utils/ids.js";
@@ -138,6 +140,7 @@ function App() {
   const [scheduleUndo, setScheduleUndo] = useState(null); // 应用排期前的快照，供撤销
   const [scheduleNotice, setScheduleNotice] = useState({ text: "", tone: "" }); // 时间分配面板的就地反馈（成功/被规则拦截的原因）
   const [scheduleQuestions, setScheduleQuestions] = useState([]);
+  const [focusBlockId, setFocusBlockId] = useState(null); // 专注模式：正在聚焦的时间块 id
   const [planningCoach, setPlanningCoach] = useState({
     scope: "today",
     messages: [],
@@ -870,6 +873,27 @@ function App() {
     }));
     setScheduleNotice({ text: "时间块已更新。再次点「自动安排」时会据此重排其余任务。", tone: "info" });
     return true;
+  }
+
+  // 专注模式：聚焦某个任务时间块，全屏倒计时；完成即打卡，+10 分钟顺延块尾
+  const focusBlock = focusBlockId ? planner.blocks.find((b) => b.id === focusBlockId) : null;
+  const focusTask = focusBlock?.taskId ? taskById[focusBlock.taskId] : null;
+  function startFocus(blockId) {
+    setFocusBlockId(blockId);
+  }
+  function completeFocus() {
+    if (focusTask) {
+      updateTask(focusTask.id, { status: "done" });
+      playTick(planner.settings);
+    }
+    setFocusBlockId(null);
+  }
+  function extendFocus(minutes) {
+    if (!focusBlock) return;
+    const newEnd = toTime(Math.min(24 * 60, toMinutes(focusBlock.end) + minutes));
+    patchPlanner((current) => ({
+      blocks: current.blocks.map((b) => (b.id === focusBlock.id ? { ...b, end: newEnd } : b)),
+    }));
   }
 
   // 拖拽重排：被拖块放到落点（几乎可放任意时间，含非工作时段/午休——这是用户手动决定）；
@@ -1771,6 +1795,7 @@ function App() {
             setTodayAiReply={setTodayAiReply}
             sendTodayAiReply={sendTodayAiReply}
             loadSampleData={loadSampleData}
+            onStartFocus={startFocus}
           />
         )}
 
@@ -1799,6 +1824,7 @@ function App() {
           <ReviewView
             selectedDate={selectedDate}
             todayTasks={todayTasks}
+            allTasks={planner.tasks}
             dayPlan={dayPlan}
             reviewDraft={reviewDraft}
             setReviewDraft={setReviewDraft}
@@ -1810,6 +1836,17 @@ function App() {
         )}
         </div>
         </ErrorBoundary>
+
+        {focusBlock && focusTask && (
+          <FocusOverlay
+            task={focusTask}
+            block={focusBlock}
+            goalTitle={focusTask.goalId ? goalById[focusTask.goalId]?.title : ""}
+            onComplete={completeFocus}
+            onExtend={extendFocus}
+            onExit={() => setFocusBlockId(null)}
+          />
+        )}
       </section>
     </main>
   );

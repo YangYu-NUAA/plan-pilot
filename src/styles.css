@@ -81,9 +81,16 @@
 }
 
 @keyframes pop-check {
-  0% { transform: scale(0.4); }
-  60% { transform: scale(1.25); }
+  0% { transform: scale(0.3) rotate(-8deg); }
+  55% { transform: scale(1.28) rotate(2deg); }
+  75% { transform: scale(0.94); }
   100% { transform: scale(1); }
+}
+
+/* 打卡瞬间色块从成功色扫过整行（克制的一次性反馈） */
+@keyframes done-sweep {
+  from { background: color-mix(in srgb, var(--success) 16%, transparent); }
+  to { background: var(--surface-2); }
 }
 
 @keyframes now-pulse {
@@ -722,9 +729,10 @@ textarea {
 }
 
 .topbar h1 {
-  font-size: clamp(24px, 3vw, 38px);
-  font-weight: 700;
-  line-height: 1.15;
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
   max-width: 760px;
 }
 
@@ -1626,19 +1634,24 @@ button.topbar-highlight:hover {
 
 .task-item {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 40px 40px 40px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 40px; /* 尾部操作按钮（专注/编辑/顺延/删除）按需自动占列 */
   gap: 10px;
   align-items: center;
   min-height: 64px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  padding: 12px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  border-radius: 0;
+  background: transparent;
 }
+.task-item:last-child { border-bottom: 0; }
 
 .task-item.done {
   opacity: 0.75;
   background: var(--surface-2);
+  animation: done-sweep 0.7s var(--ease-out);
 }
 .task-item.done .task-main strong {
   text-decoration: line-through;
@@ -1651,11 +1664,11 @@ button.topbar-highlight:hover {
 }
 
 .task-item.priority-high {
-  border-left: 4px solid var(--danger-ink);
+  border-left: 4px solid var(--accent);
 }
 
 .task-item.priority-medium {
-  border-left: 4px solid var(--warning);
+  border-left: 4px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
 }
 
 .task-item.priority-low {
@@ -1745,7 +1758,8 @@ button.topbar-highlight:hover {
   font-size: 13px;
 }
 
-/* priority badges */
+/* priority badges — 克制配色：高优先级独占 accent，中/低收敛为灰度，
+   把色彩预算留给「当前进行中的块」（Linear 式色彩纪律） */
 .priority-badge {
   display: inline-flex;
   align-items: center;
@@ -1767,26 +1781,26 @@ button.topbar-highlight:hover {
 }
 
 .priority-badge.high {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .priority-badge.high::before {
-  background: var(--danger-ink);
+  background: var(--accent);
 }
 
 .priority-badge.medium {
-  background: var(--priority-medium-soft);
-  color: var(--priority-medium-ink);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
 }
 
 .priority-badge.medium::before {
-  background: var(--warning);
+  background: var(--text-muted);
 }
 
 .priority-badge.low {
-  background: var(--priority-low-soft);
-  color: var(--priority-low-ink);
+  background: color-mix(in srgb, var(--text-muted) 7%, transparent);
+  color: var(--faint);
 }
 
 .priority-badge.low::before {
@@ -2536,7 +2550,15 @@ textarea:focus-visible {
 .btn-text { border: 0; background: transparent; color: var(--accent); font-weight: 600; font-size: 13px; padding: 4px 8px; cursor: pointer; }
 
 /* 全天 00:00–24:00 较高，容器内部滚动（自动定位到「现在」），避免页面被一根 24 小时长条撑爆 */
-.day-timeline { position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; overflow-y: auto; scrollbar-gutter: stable; }
+.day-timeline {
+  position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; overflow-y: auto; scrollbar-gutter: stable;
+  /* 未被安排的空白时段铺极浅斜纹，暗示「这里还空着」，比纯白更有设计语言 */
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 10px,
+    color-mix(in srgb, var(--text-muted) 3.5%, transparent) 10px 11px
+  );
+}
 .dt-hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hair); }
 .dt-hour span {
   position: relative; top: -8px; left: 4px; background: var(--surface); padding-right: 6px;
@@ -2765,4 +2787,83 @@ html[data-theme="night"] {
 
 .empty-state-action {
   margin-top: 4px;
+}
+
+/* ===== 专注模式（FocusOverlay） ===== */
+.focus-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-items: center;
+  background: var(--bg);
+  animation: fade-in var(--dur-med) ease-out;
+}
+.focus-exit {
+  position: absolute; top: 20px; right: 20px;
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 50%;
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.focus-exit:hover { color: var(--text); border-color: var(--border-strong); }
+.focus-content { display: grid; justify-items: center; gap: 14px; padding: 24px; max-width: 560px; text-align: center; }
+.focus-goal {
+  margin: 0; color: var(--accent); font-size: 13px; font-weight: 700;
+  letter-spacing: .04em;
+}
+.focus-title {
+  margin: 0; font-size: clamp(24px, 3.4vw, 36px); font-weight: 650;
+  letter-spacing: -0.02em; line-height: 1.25; color: var(--ink);
+}
+.focus-ring { position: relative; margin: 18px 0 6px; animation: ai-breathe 3.2s ease-in-out infinite; }
+.focus-ring-track { stroke: var(--surface-2); }
+.focus-ring-bar { stroke: var(--accent); transition: stroke-dashoffset 1s linear; }
+.focus-ring.is-overtime .focus-ring-bar { stroke: var(--warning); }
+.focus-clock {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 4px;
+}
+.focus-clock strong {
+  font-size: 44px; font-weight: 650; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.focus-clock span { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.focus-actions { display: flex; gap: 12px; margin-top: 10px; }
+.focus-done {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 48px; padding: 0 28px;
+  border: 0; border-radius: var(--radius-pill);
+  background: var(--accent); color: #fff; font-size: 16px; font-weight: 700;
+  cursor: pointer; box-shadow: var(--shadow-md);
+  transition: background .15s, transform .12s var(--ease-spring);
+}
+.focus-done:hover { background: var(--accent-hover); }
+.focus-done:active { transform: scale(0.96); }
+.focus-extend {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 48px; padding: 0 20px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: border-color .15s;
+}
+.focus-extend:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 任务卡片上的专注入口：hover 时 accent 化 */
+.focus-entry:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ===== 顶栏完成环 ===== */
+.metric-ring { display: flex; align-items: center; gap: 12px; }
+.metric-ring svg { flex-shrink: 0; }
+.metric-ring .ring-track { stroke: var(--surface-2); }
+.metric-ring .ring-bar { stroke: var(--accent); transition: stroke-dashoffset .6s var(--ease-out); }
+.metric-ring.is-full .ring-bar { stroke: var(--success); }
+.metric-ring.is-full svg { animation: pop-check 0.5s var(--ease-spring); }
+.metric-ring-text { display: grid; }
+.metric-ring-text span { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.metric-ring-text strong { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+/* ===== 复盘 streak ===== */
+.streak-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 10px; padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 700;
 }
