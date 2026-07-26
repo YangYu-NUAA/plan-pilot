@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Pencil, Target, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { addDays, dayDiff, formatShortDate, getLocalDate } from "../../utils/dateTime.js";
 import { goalTypeLabel } from "../../constants/labels.js";
 import { buildGoalGantt } from "../../planner/gantt.js";
@@ -60,7 +60,7 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
         <div className="section-heading">
           <h2>目标甘特图</h2>
         </div>
-        <EmptyState icon={<Target size={22} />} text="还没有目标。在上方新增长期 / 月度 / 本周目标后，这里会按时间线展示。" />
+        <EmptyState illustration="flag" text="还没有目标。在上方新增长期 / 月度 / 本周目标后，这里会按时间线展示。" />
       </section>
     );
   }

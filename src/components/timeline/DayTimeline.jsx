@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckSquare, Clock3, Pencil, Play, Square, Trash2 } from "lucide-react";
+import { CheckSquare, Pencil, Play, Square, Trash2 } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../../utils/dateTime.js";
 import { isMeetingSentence } from "../../planningSemantics.js";
+import { estimateMinutesForTitle } from "../../planner/textExtract.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
 
-export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus }) {
+export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus, dragTask }) {
   const PXH = 56; // 每小时像素
   const ppm = PXH / 60;
   const segs = settings.workSegments || [];
@@ -58,7 +59,7 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
   }, [selectedDate]);
 
   if (!hasContent) {
-    return <EmptyState icon={<Clock3 size={22} />} text="还没有时间块。先在设置里配置工作时段，或在上面加任务后点自动安排。" />;
+    return <EmptyState illustration="calendar" text="还没有时间块。先在设置里配置工作时段，或在上面加任务后点自动安排。" />;
   }
   // 固定显示完整一天 00:00–24:00：小时标签 0–23（最后一格 23:00），容器高度铺到 24:00，
   // 这样「现在」线在任何时刻（含 23:xx）都落在范围内、不会越出底部看不见。
@@ -70,24 +71,49 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
   const nowDate = new Date();
   const nowMin = selectedDate === getLocalDate() ? nowDate.getHours() * 60 + nowDate.getMinutes() : null;
 
+  // 外部任务拖入的「幽灵块」：实时预览落下后的样子——15 分钟吸附、
+  // 时长取该任务已有块或估时；压到不可用/固定块上时变红提示。
+  let ghost = null;
+  if (dropMin != null && dragTask) {
+    const existing = blocks.find((b) => b.taskId === dragTask.id && b.type !== "busy");
+    const dur = existing
+      ? toMinutes(existing.end) - toMinutes(existing.start)
+      : Math.max(10, estimateMinutesForTitle(dragTask.title, Number(dragTask.estimateMinutes) || 30));
+    const gStart = Math.max(dayStart, Math.min(dropMin, dayEnd - dur));
+    const gEnd = gStart + dur;
+    const clash = blocks.some((b) => {
+      if (b.id === existing?.id) return false;
+      if (!(b.type === "busy" || b.fixedTime)) return false;
+      return toMinutes(b.start) < gEnd && gStart < toMinutes(b.end);
+    });
+    ghost = { start: gStart, end: gEnd, dur, clash, title: dragTask.title };
+  }
+
   function startDrag(e, block, mode) {
     if (e.button !== undefined && e.button !== 0) return;
     e.preventDefault();
     setDrag({ id: block.id, mode, startY: e.clientY, origStart: toMinutes(block.start), origEnd: toMinutes(block.end), deltaMin: 0 });
   }
 
-  // 把落点 clientY 换算成分钟（减去顶部 8px padding，吸附 5 分钟，夹在当天范围内）
+  // 把落点 clientY 换算成分钟（减去顶部 8px padding，吸附 15 分钟，夹在当天范围内）
   function yToMinute(clientY) {
     const rect = rootRef.current?.getBoundingClientRect();
     if (!rect) return dayStart;
     const m = dayStart + (clientY - rect.top - 8) / ppm;
-    return Math.max(dayStart, Math.min(dayEnd, Math.round(m / 5) * 5));
+    return Math.max(dayStart, Math.min(dayEnd, Math.round(m / 15) * 15));
   }
   function onDragOverTimeline(e) {
     if (!onDropTask) return;
     e.preventDefault(); // 必须 preventDefault 才能触发 drop
     e.dataTransfer.dropEffect = "copy";
     setDropMin(yToMinute(e.clientY));
+    // 拖到上/下边缘时自动滚动，够得着凌晨与深夜的时段
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) {
+      const EDGE = 56;
+      if (e.clientY < rect.top + EDGE) rootRef.current.scrollTop -= 14;
+      else if (e.clientY > rect.bottom - EDGE) rootRef.current.scrollTop += 14;
+    }
   }
   function onDropTimeline(e) {
     if (!onDropTask) return;
@@ -219,9 +245,15 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
           <b>现在 {toTime(nowMin)}</b>
         </div>
       )}
-      {dropMin != null && (
-        <div className="dt-drop" style={{ top: (dropMin - dayStart) * ppm + 8 }}>
-          <b>放到 {toTime(dropMin)}</b>
+      {ghost && (
+        <div
+          className={`dt-ghost${ghost.clash ? " clash" : ""}`}
+          style={{ top: (ghost.start - dayStart) * ppm + 8, height: Math.max(24, ghost.dur * ppm) }}
+        >
+          <span className="dt-ghost-title">{ghost.title}</span>
+          <span className="dt-ghost-time">
+            {ghost.clash ? "与固定安排冲突" : `${toTime(ghost.start)}–${toTime(ghost.end)}`}
+          </span>
         </div>
       )}
       <div className="dt-spacer" style={{ height: totalMin * ppm + 18, pointerEvents: "none" }} />

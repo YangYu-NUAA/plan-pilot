@@ -6,7 +6,7 @@
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
-  line-height: 1.5;
+  line-height: 1.58; /* 中文长文舒适行高 */
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -2627,10 +2627,30 @@ textarea:focus-visible {
 .dt-now::before { content: ""; position: absolute; left: -4px; top: -3.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: now-pulse 2.4s ease-in-out infinite; }
 .dt-now b { position: absolute; right: 0; top: -9px; font-size: 10.5px; font-weight: 600; color: var(--danger); background: var(--surface); padding: 0 5px; }
 
-/* 外部任务拖入时的落点指示线（虚线 + 胶囊标签），不拦截指针事件以免影响 drop */
-.dt-drop { position: absolute; left: 46px; right: 2px; border-top: 2px dashed var(--accent, #c05e3e); z-index: 6; pointer-events: none; }
-.dt-drop::before { content: ""; position: absolute; left: -5px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent, #c05e3e); }
-.dt-drop b { position: absolute; left: 0; top: -9px; font-size: 10.5px; font-weight: 700; color: #fff; background: var(--accent, #c05e3e); padding: 1px 7px; border-radius: 999px; }
+/* 外部任务拖入时的「幽灵块」预览：实时显示落下后的位置与时长；
+   压到不可用 / 固定块上时（.clash）变红。不拦截指针事件以免影响 drop。 */
+.dt-ghost {
+  position: absolute; left: 50px; right: 2px; z-index: 6;
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  padding: 4px 12px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 10px;
+  /* 以 surface 为底混入 accent：压在别的块上时文字仍清晰可读 */
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  color: var(--accent);
+  pointer-events: none;
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.dt-ghost-title {
+  font-size: 12.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dt-ghost-time { font-size: 11px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+.dt-ghost.clash {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface) 90%);
+  color: var(--danger);
+}
 
 /* 右侧任务可拖到时间轴：抓取光标，但按钮保持点击光标 */
 .task-item.is-draggable { cursor: grab; }
@@ -3024,3 +3044,170 @@ html[data-theme="night"] {
   color: var(--faint); font-size: 12px; padding: 0 6px;
 }
 .greet-mute:hover { color: var(--text-muted); }
+
+/* —— ⌘K 命令条：Spotlight 式居中面板，纯本地解析 —— */
+.cmdk-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  backdrop-filter: blur(3px);
+  display: flex; justify-content: center; align-items: flex-start;
+  padding-top: min(22vh, 220px);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.cmdk {
+  width: min(560px, 92vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg), 0 24px 64px rgba(20, 16, 10, 0.18);
+  overflow: hidden;
+  animation: scale-in var(--dur-med) var(--ease-out);
+}
+.cmdk-input-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--hair);
+  color: var(--text-muted);
+}
+.cmdk-input-row input {
+  flex: 1; min-width: 0;
+  border: 0; background: transparent; padding: 0;
+  font-size: 15px; color: var(--text);
+  outline: none;
+}
+.cmdk-input-row kbd,
+.cmdk-item kbd,
+.cmdk-foot kbd {
+  font-family: inherit; font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.cmdk-list {
+  list-style: none; margin: 0; padding: 6px;
+  max-height: 320px; overflow-y: auto;
+}
+.cmdk-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0; border-radius: 8px;
+  background: transparent; color: var(--text);
+  font-size: 14px; text-align: left; cursor: pointer;
+}
+.cmdk-item.active { background: var(--accent-soft); }
+.cmdk-item-icon {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.cmdk-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.cmdk-item-hint { flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
+.cmdk-empty {
+  margin: 0; padding: 18px 16px 20px;
+  font-size: 13px; color: var(--text-muted);
+}
+.cmdk-foot {
+  display: flex; align-items: center; gap: 14px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--hair);
+  font-size: 11.5px; color: var(--text-muted);
+}
+.cmdk-foot-note { margin-left: auto; opacity: 0.8; }
+
+/* —— 空状态线条插画 —— */
+.illustration { color: var(--text-muted); opacity: 0.9; }
+.illustration .ill-accent { color: var(--accent); stroke: currentColor; }
+.illustration .ill-detail { opacity: 0.45; }
+.empty-state:has(.illustration) { padding: 22px 16px; gap: 10px; }
+.empty-state .illustration { margin-bottom: 2px; }
+
+/* —— 首次使用引导卡 —— */
+.welcome-overlay {
+  position: fixed; inset: 0; z-index: 280;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  backdrop-filter: blur(4px);
+  display: grid; place-items: center;
+  padding: 20px;
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.welcome-card {
+  width: min(520px, 94vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg), 0 28px 72px rgba(20, 16, 10, 0.2);
+  padding: 26px 26px 22px;
+  display: grid; gap: 18px;
+  animation: scale-in var(--dur-med) var(--ease-out);
+}
+.welcome-brand { display: flex; gap: 14px; align-items: flex-start; }
+.welcome-mark {
+  display: grid; place-items: center;
+  width: 44px; height: 44px; flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.welcome-brand h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.02em; }
+.welcome-brand p { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.welcome-steps {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 8px;
+}
+.welcome-steps li {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+.welcome-steps li.done { background: color-mix(in srgb, var(--success) 6%, var(--surface)); }
+.welcome-step-check {
+  display: grid; place-items: center;
+  width: 22px; height: 22px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: 12px; font-weight: 700;
+}
+.welcome-steps li.done .welcome-step-check {
+  background: var(--success); border-color: var(--success); color: #fff;
+  animation: pop-check 0.32s var(--ease-spring);
+}
+.welcome-step-icon {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.welcome-step-body { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.welcome-step-body strong { font-size: 13.5px; }
+.welcome-step-body span { font-size: 12px; color: var(--text-muted); }
+.welcome-steps li.done .welcome-step-body strong { color: var(--success); }
+.welcome-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.welcome-actions .primary-action { display: inline-flex; }
+
+/* —— 中文排印精修：标点悬挂（行首引号/括号外凸）、段落折行避免短孤行。
+   均为渐进增强——不支持的引擎自动忽略，无副作用。 —— */
+p,
+li,
+.interview-message,
+.greet-body p,
+.empty-state span,
+.welcome-step-body span {
+  hanging-punctuation: first allow-end;
+  text-wrap: pretty;
+}
+
+/* 标题收紧字重与字距：中文大字重易显笨，600-620 更挺拔 */
+.topbar h1 { font-weight: 620; }
+.coach-copy h2,
+.section-heading h2,
+.review-summary h2 { font-weight: 640; }

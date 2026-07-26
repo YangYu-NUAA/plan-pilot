@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  Command as CommandIcon,
   ListChecks,
   Settings,
   Target,
@@ -26,6 +27,9 @@ import { defaultState } from "./app/initialState.js";
 import { replaceRecurringBlocks } from "./planner/hydration.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { FocusOverlay } from "./components/FocusOverlay.jsx";
+import { CommandBar } from "./components/CommandBar.jsx";
+import { WelcomeCard } from "./components/WelcomeCard.jsx";
+import { THEMES } from "./utils/commandParse.js";
 import { playTick } from "./utils/soundFx.js";
 import { useLocalAiKey } from "./hooks/useLocalAiKey.js";
 import { hydratePlannerState, usePlannerStore } from "./hooks/usePlannerStore.js";
@@ -102,6 +106,18 @@ function App() {
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
   const [activeView, setActiveView] = useState("today");
   const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
+  const [cmdOpen, setCmdOpen] = useState(false); // ⌘K 命令条开合
+  // 首次使用引导：完全空白且未曾关闭时显示；数据一旦填入自动隐去
+  const [onboarded, setOnboarded] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-onboarded") === "1"; } catch { return false; }
+  });
+  const isBrandNew = planner.tasks.length === 0 && planner.goals.length === 0 && planner.blocks.length === 0;
+  const [welcomeHidden, setWelcomeHidden] = useState(false); // 临时收起（点步骤按钮/背景）：不写标记，下次空白时仍会回来
+  const showWelcome = !onboarded && !welcomeHidden && isBrandNew;
+  function dismissWelcome() {
+    setOnboarded(true);
+    try { localStorage.setItem("plan-pilot-onboarded", "1"); } catch (e) { /* ignore */ }
+  }
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem("plan-pilot-theme") || "warm"; } catch { return "warm"; }
   });
@@ -896,6 +912,122 @@ function App() {
     }));
   }
 
+  // —— ⌘K 命令条：全部意图在本地解析（utils/commandParse），不经过大模型 ——
+  useEffect(() => {
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCmdOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // 当前正在进行、或今天下一个可专注的任务块
+  function findFocusCandidate() {
+    const today = getLocalDate();
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const candidates = planner.blocks
+      .filter((b) => b.date === today && b.type !== "busy")
+      .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+    return (
+      candidates.find((b) => toMinutes(b.start) <= nowMin && nowMin < toMinutes(b.end)) ||
+      candidates.find((b) => toMinutes(b.start) > nowMin) ||
+      null
+    );
+  }
+
+  const commandDefaults = useMemo(() => {
+    const items = [];
+    const candidate = findFocusCandidate();
+    if (candidate) {
+      const title = candidate.title || taskById[candidate.taskId]?.title || "时间块";
+      items.push({ kind: "focus", label: `专注「${title}」`, hint: `${candidate.start}–${candidate.end}` });
+    }
+    items.push({ kind: "goto-date", date: addDays(getLocalDate(), 1), label: "跳到明天", hint: "" });
+    items.push({ kind: "theme", theme: null, label: "切换主题（循环）", hint: "暖象牙 → 冷蓝 → 墨灰 → 暗夜" });
+    items.push({ kind: "view", view: "review", label: "打开复盘视图", hint: "" });
+    items.push({ kind: "settings", label: "打开设置", hint: "" });
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planner.blocks, taskById]);
+
+  function execCommandIntent(intent) {
+    switch (intent.kind) {
+      case "goto-date":
+        setSelectedDate(intent.date);
+        setActiveView("today");
+        break;
+      case "view":
+        setActiveView(intent.view);
+        break;
+      case "settings":
+        setSettingsOpen(true);
+        break;
+      case "theme":
+        setTheme((cur) => intent.theme || THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+        break;
+      case "focus": {
+        const candidate = findFocusCandidate();
+        if (candidate) {
+          setSelectedDate(getLocalDate());
+          setActiveView("today");
+          startFocus(candidate.id);
+        } else {
+          setActiveView("today");
+          setScheduleNotice({ text: "今天没有可专注的时间块，先排一个吧。", tone: "info" });
+        }
+        break;
+      }
+      case "add-task": {
+        const nextTask = {
+          id: uid("task"),
+          title: intent.title,
+          estimateMinutes: intent.estimateMinutes,
+          priority: "medium",
+          goalId: "",
+          date: intent.date,
+          status: "open",
+          createdAt: new Date().toISOString(),
+        };
+        patchPlanner((current) => ({
+          tasks: mergeDuplicateTasks(current.tasks.concat(nextTask)),
+          blocks: current.blocks.concat(extractBusyBlocksFromText(intent.title, intent.date, current.blocks)),
+        }));
+        setSelectedDate(intent.date);
+        setActiveView("today");
+        setScheduleNotice({ text: `已添加任务「${intent.title}」。`, tone: "info" });
+        break;
+      }
+      case "add-block": {
+        const nextBlock = {
+          id: uid("block"),
+          taskId: "",
+          title: intent.title,
+          type: intent.blockType,
+          date: intent.date,
+          start: intent.start,
+          end: intent.end,
+          auto: false,
+        };
+        const clash = planner.blocks.some((b) => b.date === intent.date && overlapsAny(nextBlock, [b]));
+        setSelectedDate(intent.date);
+        setActiveView("today");
+        if (clash) {
+          setScheduleNotice({ text: `${intent.start}–${intent.end} 与已有时间块冲突，未添加。`, tone: "error" });
+          return;
+        }
+        patchPlanner((current) => ({ blocks: current.blocks.concat(nextBlock) }));
+        setScheduleNotice({ text: `已排入 ${intent.start}–${intent.end}「${intent.title}」。`, tone: "info" });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   // 拖拽重排：被拖块放到落点（几乎可放任意时间，含非工作时段/午休——这是用户手动决定）；
   // 只有撞到「不可用 / 固定时间」块才弹回。原本在它下方、且现在会冲突的任务块温和顺延（跳过硬锚点）。永不删块。
   function applyDragReschedule(blockId, newStartMin, newEndMin) {
@@ -1634,6 +1766,9 @@ function App() {
           <button className={activeView === "review" ? "active" : ""} data-tip="复盘" aria-label="复盘" onClick={() => setActiveView("review")}>
             <ListChecks size={20} />
           </button>
+          <button data-tip="命令条 ⌘K" aria-label="命令条" onClick={() => setCmdOpen(true)}>
+            <CommandIcon size={20} />
+          </button>
         </nav>
         <button
           className={`rail-settings ${settingsOpen ? "active" : ""}`}
@@ -1848,6 +1983,26 @@ function App() {
             onComplete={completeFocus}
             onExtend={extendFocus}
             onExit={() => setFocusBlockId(null)}
+          />
+        )}
+
+        <CommandBar
+          open={cmdOpen}
+          onClose={() => setCmdOpen(false)}
+          onExecute={execCommandIntent}
+          selectedDate={selectedDate}
+          todayStr={getLocalDate()}
+          defaults={commandDefaults}
+        />
+
+        {showWelcome && (
+          <WelcomeCard
+            planner={planner}
+            onOpenSettings={() => { setSettingsOpen(true); setWelcomeHidden(true); }}
+            onGoGoals={() => { setActiveView("goals"); setWelcomeHidden(true); }}
+            onLoadSample={loadSampleData}
+            onDismiss={dismissWelcome}
+            onHide={() => setWelcomeHidden(true)}
           />
         )}
       </section>
