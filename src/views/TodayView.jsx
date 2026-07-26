@@ -8,6 +8,7 @@ import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
+import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
 import { Metric, MetricRing } from "../components/ui/Metric.jsx";
 import { PipWindow } from "../components/PipWindow.jsx";
@@ -107,6 +108,9 @@ export function TodayView({
   const [deferringQuestionId, setDeferringQuestionId] = useState(null);
   const [deferTargetDate, setDeferTargetDate] = useState("");
   const [blockEditDraft, setBlockEditDraft] = useState({ title: "", start: "09:00", end: "10:00", type: "task" });
+  const [dragTaskId, setDragTaskId] = useState(null); // 正在拖向时间轴的任务（幽灵块预览用）
+  const taskListRef = useRef(null);
+  useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
 
   function startEditingBlock(block) {
     setEditingBlockId(block.id);
@@ -324,7 +328,7 @@ export function TodayView({
         <div className="interview-body">
           {planningCoach.messages.length === 0 && planningCoach.suggestions.length === 0 && !planningCoach.loading && (
             <EmptyState
-              icon={<Sparkles size={22} />}
+              illustration="chat"
               text="选好上方范围 → 点「开始访谈」。AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。长期范围会逐个方向引导你列出可能遗忘的目标。"
             />
           )}
@@ -463,7 +467,7 @@ export function TodayView({
           </button>
         </form>
 
-        <div className="task-list">
+        <div className="task-list" ref={taskListRef}>
           {overdueTasks.length > 0 && (
             <div className="overdue-zone">
               <div className="overdue-head">
@@ -517,7 +521,7 @@ export function TodayView({
           )}
           {todayTasks.length === 0 && (
             <EmptyState
-              icon={<Target size={22} />}
+              illustration="compass"
               text="先写下今天的一件具体工作。第一次用？可以填入示例数据看看完整效果。"
               action={
                 loadSampleData && (
@@ -537,7 +541,7 @@ export function TodayView({
 
               if (isEditing) {
                 return (
-                  <article className="task-item editing" key={task.id}>
+                  <article className="task-item editing" key={task.id} data-flip-key={task.id}>
                     <div className="edit-task-form">
                       <input
                         value={editDraft.title}
@@ -593,11 +597,14 @@ export function TodayView({
               <article
                 className={`task-item is-draggable ${task.status === "done" ? "done" : ""}${task.kind === "fixed" ? " fixed" : ""}${task.kind !== "fixed" ? " priority-" + task.priority : ""}`}
                 key={task.id}
+                data-flip-key={task.id}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData("text/plain", task.id);
                   e.dataTransfer.effectAllowed = "copy";
+                  setDragTaskId(task.id);
                 }}
+                onDragEnd={() => setDragTaskId(null)}
                 title="拖到右侧时间轴可安排到具体时间"
               >
                 <button
@@ -908,6 +915,7 @@ export function TodayView({
             }
           }}
           onStartFocus={onStartFocus}
+          dragTask={dragTaskId ? taskById[dragTaskId] : null}
         />
       </section>
       </div>
