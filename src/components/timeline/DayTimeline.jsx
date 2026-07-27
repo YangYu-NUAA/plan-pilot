@@ -5,14 +5,24 @@ import { isMeetingSentence } from "../../planningSemantics.js";
 import { estimateMinutesForTitle } from "../../planner/textExtract.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
 
-export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus, dragTask }) {
-  const PXH = 56; // 每小时像素
-  const ppm = PXH / 60;
+export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus, dragTask, fitAll = false }) {
+  const PXH_STD = 56; // 标准密度：每小时像素
   const segs = settings.workSegments || [];
   const hasContent = segs.length > 0 || blocks.length > 0; // 是否有可显示内容（否则给空态提示）
   const [drag, setDrag] = useState(null); // { id, mode:"move"|"resize", startY, origStart, origEnd, deltaMin }
   const rootRef = useRef(null); // 容器，用于把落点 clientY 换算成分钟
   const [dropMin, setDropMin] = useState(null); // 外部任务拖入时的落点指示（分钟）
+  const [viewH, setViewH] = useState(0); // fitAll 模式下的面板可视高度
+
+  // 适配全天：监听面板高度，内容范围（工作时段+块 ±30min）一屏放下
+  useEffect(() => {
+    if (!fitAll || !rootRef.current) return undefined;
+    const ro = new ResizeObserver((entries) => {
+      setViewH(entries[0]?.contentRect.height || 0);
+    });
+    ro.observe(rootRef.current);
+    return () => ro.disconnect();
+  }, [fitAll]);
 
   useEffect(() => {
     if (!drag) return undefined;
@@ -42,8 +52,9 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
   }, [drag?.id, drag?.mode]);
 
   // 全天 0–24 较高、容器内部滚动；切换日期/进入时自动定位到「现在」（非今天则定位到首个块/工作开始），
-  // 让关注点上方留约 1 小时，避免一进来停在凌晨空白区。
+  // 让关注点上方留约 1 小时，避免一进来停在凌晨空白区。fitAll 模式全天可见，无需定位。
   useEffect(() => {
+    if (fitAll) return;
     const el = rootRef.current;
     if (!el) return;
     const now = new Date();
@@ -56,15 +67,31 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
             ? toMinutes(segs[0].start)
             : 8 * 60;
     el.scrollTop = Math.max(0, (focusMin - 60) * ppm);
-  }, [selectedDate]);
+  }, [selectedDate, fitAll]);
 
   if (!hasContent) {
     return <EmptyState illustration="calendar" text="还没有时间块。先在设置里配置工作时段，或在上面加任务后点自动安排。" />;
   }
-  // 固定显示完整一天 00:00–24:00：小时标签 0–23（最后一格 23:00），容器高度铺到 24:00，
-  // 这样「现在」线在任何时刻（含 23:xx）都落在范围内、不会越出底部看不见。
-  const dayStart = 0;
-  const dayEnd = 1440;
+  // 标准模式：固定 00:00–24:00、56px/h，容器内部滚动；
+  // fitAll 模式：范围收窄到「当日内容 ±30min」，每小时像素按面板高度动态计算，全天一屏放下。
+  let pxh = PXH_STD;
+  let dayStart = 0;
+  let dayEnd = 1440;
+  if (fitAll) {
+    const pad = 30;
+    const pts = [];
+    segs.forEach((s) => { pts.push(toMinutes(s.start), toMinutes(s.end)); });
+    blocks.forEach((b) => { pts.push(toMinutes(b.start), toMinutes(b.end)); });
+    const lo = pts.length ? Math.min(...pts) : 7 * 60;
+    const hi = pts.length ? Math.max(...pts) : 23 * 60;
+    dayStart = Math.max(0, Math.floor((lo - pad) / 30) * 30);
+    dayEnd = Math.min(1440, Math.ceil((hi + pad) / 30) * 30);
+    if (viewH > 0) {
+      // 下限 26px/h（再小文字不可读），上限 1.4× 标准（避免半天日程被放得过大）
+      pxh = Math.max(26, Math.min(PXH_STD * 1.4, (viewH - 16) / ((dayEnd - dayStart) / 60)));
+    }
+  }
+  const ppm = pxh / 60;
   const totalMin = dayEnd - dayStart;
   const hours = [];
   for (let m = dayStart; m < dayEnd; m += 60) hours.push(m);

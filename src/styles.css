@@ -3211,3 +3211,39 @@ li,
 .coach-copy h2,
 .section-heading h2,
 .review-summary h2 { font-weight: 640; }
+
+/* —— 时间轴「适配全天 / 全屏展开」 —— */
+.schedule-head-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+/* PipWindow/自动安排按钮在标题栏右侧，actions 用 margin-left:auto 把它们一起推到右边时保持成组 */
+.schedule-panel .section-heading { flex-wrap: wrap; row-gap: 8px; }
+.icon-button.is-on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+.timeline-zoom {
+  position: fixed; inset: 0; z-index: 260;
+  background: color-mix(in srgb, var(--ink) 24%, transparent);
+  backdrop-filter: blur(4px);
+  display: grid; place-items: center;
+  padding: 24px;
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.timeline-zoom-body {
+  width: min(1100px, 96vw);
+  height: min(92vh, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg), 0 28px 72px rgba(20, 16, 10, 0.22);
+  padding: 16px 18px;
+  display: flex; flex-direction: column;
+  animation: scale-in var(--dur-med) var(--ease-out);
+}
+.timeline-zoom-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.timeline-zoom-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
+.timeline-zoom-body .day-timeline { margin-top: 0; min-height: 0; }

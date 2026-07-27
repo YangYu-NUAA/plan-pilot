@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Pencil, Play, Plus, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { playTick } from "../utils/soundFx.js";
 import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
@@ -109,6 +109,24 @@ export function TodayView({
   const [deferTargetDate, setDeferTargetDate] = useState("");
   const [blockEditDraft, setBlockEditDraft] = useState({ title: "", start: "09:00", end: "10:00", type: "task" });
   const [dragTaskId, setDragTaskId] = useState(null); // 正在拖向时间轴的任务（幽灵块预览用）
+  // 时间轴密度：fitAll=适配全天（动态缩放一屏放下），默认标准 56px/h；本地记忆
+  const [fitAll, setFitAllState] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-timeline-fit") === "1"; } catch { return false; }
+  });
+  function setFitAll(updater) {
+    setFitAllState((cur) => {
+      const next = typeof updater === "function" ? updater(cur) : updater;
+      try { localStorage.setItem("plan-pilot-timeline-fit", next ? "1" : "0"); } catch (e) { /* ignore */ }
+      return next;
+    });
+  }
+  const [timelineZoom, setTimelineZoom] = useState(false); // 全屏时间轴
+  useEffect(() => {
+    if (!timelineZoom) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setTimelineZoom(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [timelineZoom]);
   const taskListRef = useRef(null);
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
 
@@ -694,6 +712,26 @@ export function TodayView({
           <div>
             <h2>时间分配</h2>
           </div>
+          <div className="schedule-head-actions">
+            <button
+              type="button"
+              className={`icon-button${fitAll ? " is-on" : ""}`}
+              title={fitAll ? "切回标准密度（56px/h，内部滚动）" : "适配全天：动态缩放，全天一屏放下"}
+              aria-pressed={fitAll}
+              onClick={() => setFitAll((v) => !v)}
+            >
+              <Rows3 size={17} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="全屏查看完整时间规划"
+              aria-label="全屏查看时间轴"
+              onClick={() => setTimelineZoom(true)}
+            >
+              <Maximize2 size={17} />
+            </button>
+          </div>
           <PipWindow
             blocks={planner.blocks}
             taskById={taskById}
@@ -916,9 +954,44 @@ export function TodayView({
           }}
           onStartFocus={onStartFocus}
           dragTask={dragTaskId ? taskById[dragTaskId] : null}
+          fitAll={fitAll}
         />
       </section>
       </div>
+
+      {timelineZoom && (
+        <div className="timeline-zoom" onClick={() => setTimelineZoom(false)}>
+          <div className="timeline-zoom-body" onClick={(e) => e.stopPropagation()}>
+            <div className="timeline-zoom-head">
+              <h2>时间分配 · {formatHumanDate(selectedDate)}</h2>
+              <button type="button" className="icon-button" aria-label="退出全屏" title="退出全屏（Esc）" onClick={() => setTimelineZoom(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <DayTimeline
+              blocks={todayBlocks}
+              taskById={taskById}
+              settings={planner.settings}
+              selectedDate={selectedDate}
+              onReschedule={applyDragReschedule}
+              onDropTask={scheduleTaskAtMinute}
+              onEdit={startEditingBlock}
+              onDelete={deleteBlock}
+              onToggleDone={(block) => {
+                const t = taskById[block.taskId];
+                if (t) {
+                  const marking = t.status !== "done";
+                  updateTask(t.id, { status: marking ? "done" : "open" });
+                  if (marking) playTick(planner.settings);
+                }
+              }}
+              onStartFocus={onStartFocus}
+              dragTask={dragTaskId ? taskById[dragTaskId] : null}
+              fitAll
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
