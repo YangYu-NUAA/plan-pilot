@@ -674,6 +674,14 @@ function dataProxy() {
         res.setHeader("Content-Type", "application/json");
         // 上游错误若是 HTML/纯文本（404 常见），包装成 JSON 方便前端展示具体原因
         if (!upstream.ok) {
+          // 404 几乎一定是 ASR 地址填成了聊天 plan 路径——直接给出正确填法
+          if (upstream.status === 404) {
+            const tried = asrTranscriptionsUrl(req.headers["x-asr-base-url"]);
+            res.end(JSON.stringify({
+              error: `ASR 端点不存在（404）：${tried}。阶跃语音识别的标准地址是 https://api.stepfun.com（与你的聊天 plan 路径 step_plan/v1 不同）——请到设置里把「ASR 地址」改为它再试。`,
+            }));
+            return;
+          }
           try {
             JSON.parse(text);
             res.end(text);
