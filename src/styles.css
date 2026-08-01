@@ -3304,3 +3304,18 @@ li,
 /* 命令条里的麦克风按钮：无边框幽灵样式，融进输入行 */
 .cmdk-input-row .voice-btn { border: 0; background: transparent; height: 28px; min-width: 28px; }
 .cmdk-input-row .voice-btn.is-recording { background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
+
+/* —— 设置面板：跨双列的整行项 + 语音 ASR 独立配置组 —— */
+.settings-span-2 { grid-column: 1 / -1; }
+.settings-voice-asr {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.settings-voice-asr input {
+  height: 32px;
+  font-size: 12px;
+}

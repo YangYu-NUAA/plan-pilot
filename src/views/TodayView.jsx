@@ -74,6 +74,7 @@ export function TodayView({
   onStartFocus,
   ai,
   localAiKey,
+  voiceKey,
   serverAiKeyLoaded,
 }) {
   const overload = plannedMinutes > workMinutes;
@@ -411,7 +412,9 @@ export function TodayView({
           <div className="interview-actions">
             <VoiceButton
               engine={planner.settings.voiceEngine || "stepfun"}
-              apiKey={localAiKey}
+              apiKey={voiceKey || localAiKey}
+              baseUrl={planner.settings.voiceAsrBaseUrl || ""}
+              model={planner.settings.voiceAsrModel || ""}
               hint="语音输入访谈内容"
               onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; }}
               onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}

@@ -11,6 +11,9 @@ export const defaultState = {
     soundFx: false,
     // 语音识别方式：stepfun=阶跃 ASR（经服务器代理，隐私优先）；browser=浏览器识别（无需 Key）
     voiceEngine: "stepfun",
+    // ASR 独立配置（与聊天模型分家；Key 单独存浏览器 localStorage，见 useLocalVoiceKey）
+    voiceAsrBaseUrl: "https://api.stepfun.com",
+    voiceAsrModel: "stepaudio-2.5-asr",
   },
   ai: {
     enabled: true,

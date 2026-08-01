@@ -32,6 +32,7 @@ import { WelcomeCard } from "./components/WelcomeCard.jsx";
 import { THEMES } from "./utils/commandParse.js";
 import { playTick } from "./utils/soundFx.js";
 import { useLocalAiKey } from "./hooks/useLocalAiKey.js";
+import { useLocalVoiceKey } from "./hooks/useLocalVoiceKey.js";
 import { hydratePlannerState, usePlannerStore } from "./hooks/usePlannerStore.js";
 import { uid } from "./utils/ids.js";
 import {
@@ -103,6 +104,7 @@ function App() {
   });
   const autoSchedulingRef = useRef(false); // 防自动安排并发（每实例，替代模块全局）—— from PR #6 (hrjtju)
   const [localAiKey, updateLocalAiKey] = useLocalAiKey();
+  const [voiceKey, updateVoiceKey] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
   const [activeView, setActiveView] = useState("today");
   const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
@@ -1804,6 +1806,8 @@ function App() {
         applyAiProviderPreset={applyAiProviderPreset}
         localAiKey={localAiKey}
         updateLocalAiKey={updateLocalAiKey}
+        voiceKey={voiceKey}
+        updateVoiceKey={updateVoiceKey}
         serverAiKeyLoaded={serverAiKeyLoaded}
         aiKeyLoaded={aiKeyLoaded}
         currentAiPreset={currentAiPreset}
@@ -1933,6 +1937,7 @@ function App() {
             onStartFocus={startFocus}
             ai={planner.ai}
             localAiKey={localAiKey}
+            voiceKey={voiceKey}
             serverAiKeyLoaded={serverAiKeyLoaded}
           />
         )}
@@ -1994,7 +1999,9 @@ function App() {
           todayStr={getLocalDate()}
           defaults={commandDefaults}
           voiceEngine={planner.settings.voiceEngine || "stepfun"}
-          voiceApiKey={localAiKey}
+          voiceApiKey={voiceKey || localAiKey}
+          voiceBaseUrl={planner.settings.voiceAsrBaseUrl || ""}
+          voiceModel={planner.settings.voiceAsrModel || ""}
         />
 
         {showWelcome && (

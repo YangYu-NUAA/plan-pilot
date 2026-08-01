@@ -10,7 +10,7 @@ import {
 
 // 通用语音输入按钮：点一下开始、再点停止；识别文字经 onText 回调（浏览器引擎
 // 另有 onInterim 流式中间结果）。确认缓冲由父组件负责——文字先落输入框，用户过目后再提交。
-export function VoiceButton({ engine = "stepfun", apiKey = "", onText, onInterim, onStart, disabled = false, hint = "语音输入" }) {
+export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", model = "", onText, onInterim, onStart, disabled = false, hint = "语音输入" }) {
   const [state, setState] = useState("idle"); // idle | recording | transcribing | error
   const [error, setError] = useState("");
   const recorderRef = useRef(null);
@@ -84,7 +84,7 @@ export function VoiceButton({ engine = "stepfun", apiKey = "", onText, onInterim
       const raw = await recorder.stop();
       if (!raw || raw.size < 1000) throw new Error("太短了，按住多说一句");
       const wav = await blobToWav(raw);
-      const text = await transcribeAudio(wav, { apiKey });
+      const text = await transcribeAudio(wav, { apiKey, baseUrl, model });
       onText?.(text);
       setState("idle");
     } catch (e) {
