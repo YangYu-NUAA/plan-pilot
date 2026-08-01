@@ -3247,3 +3247,60 @@ li,
 }
 .timeline-zoom-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
 .timeline-zoom-body .day-timeline { margin-top: 0; min-height: 0; }
+
+/* —— 语音输入按钮（⌘K 命令条 / AI 访谈共用） —— */
+.voice-btn-wrap { position: relative; display: inline-flex; }
+.voice-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-width: 32px; height: 32px; padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.voice-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--border-strong); }
+.voice-btn:disabled { opacity: 0.5; cursor: default; }
+/* 录音中：红底呼吸 + 声波条 */
+.voice-btn.is-recording {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+  animation: voice-pulse 1.6s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 30%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 0%, transparent); }
+}
+.voice-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.voice-bars i {
+  width: 2.5px; border-radius: 2px; background: var(--danger);
+  animation: voice-bar 0.9s ease-in-out infinite;
+}
+.voice-bars i:nth-child(1) { height: 5px; animation-delay: 0s; }
+.voice-bars i:nth-child(2) { height: 11px; animation-delay: 0.18s; }
+.voice-bars i:nth-child(3) { height: 7px; animation-delay: 0.36s; }
+@keyframes voice-bar {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1.25); }
+}
+.voice-btn.is-transcribing { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.voice-spin { animation: voice-rotate 0.9s linear infinite; }
+@keyframes voice-rotate { to { transform: rotate(360deg); } }
+.voice-btn.is-error { border-color: color-mix(in srgb, var(--danger) 50%, transparent); color: var(--danger); }
+.voice-error {
+  position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 20;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 8px;
+  padding: 5px 10px;
+  box-shadow: var(--shadow-sm);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+/* 命令条里的麦克风按钮：无边框幽灵样式，融进输入行 */
+.cmdk-input-row .voice-btn { border: 0; background: transparent; height: 28px; min-width: 28px; }
+.cmdk-input-row .voice-btn.is-recording { background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }

@@ -8,6 +8,7 @@ import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
+import { VoiceButton } from "../components/ui/VoiceButton.jsx";
 import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
 import { Metric, MetricRing } from "../components/ui/Metric.jsx";
@@ -129,6 +130,7 @@ export function TodayView({
   }, [timelineZoom]);
   const taskListRef = useRef(null);
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
+  const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
 
   function startEditingBlock(block) {
     setEditingBlockId(block.id);
@@ -407,6 +409,14 @@ export function TodayView({
             placeholder="回答 AI 的问题，或直接描述：今天/本周/月度/长期想推进什么"
           />
           <div className="interview-actions">
+            <VoiceButton
+              engine={planner.settings.voiceEngine || "stepfun"}
+              apiKey={localAiKey}
+              hint="语音输入访谈内容"
+              onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; }}
+              onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
+              onText={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
+            />
             <button className="primary-action" disabled={planningCoach.loading || !planningCoach.input.trim()}>
               <Send size={18} />
               发送

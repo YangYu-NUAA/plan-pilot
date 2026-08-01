@@ -1993,6 +1993,8 @@ function App() {
           selectedDate={selectedDate}
           todayStr={getLocalDate()}
           defaults={commandDefaults}
+          voiceEngine={planner.settings.voiceEngine || "stepfun"}
+          voiceApiKey={localAiKey}
         />
 
         {showWelcome && (

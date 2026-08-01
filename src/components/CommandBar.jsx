@@ -11,6 +11,7 @@ import {
   Target,
 } from "lucide-react";
 import { parseCommandInput } from "../utils/commandParse.js";
+import { VoiceButton } from "./ui/VoiceButton.jsx";
 
 const KIND_ICON = {
   "add-task": Plus,
@@ -24,11 +25,12 @@ const KIND_ICON = {
 const VIEW_ICON = { today: CalendarDays, goals: Target, review: ListChecks };
 
 // ⌘K 全局命令条：所有解析都是本地的（commandParse），零网络、零延迟。
-export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, defaults = [] }) {
+export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, defaults = [], voiceEngine = "stepfun", voiceApiKey = "" }) {
   const [input, setInput] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const voiceBaseRef = useRef(""); // 录音开始时输入框已有内容，识别文本接在其后
 
   const intents = useMemo(
     () => (input.trim() ? parseCommandInput(input, { selectedDate, todayStr }) : defaults),
@@ -89,6 +91,18 @@ export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, d
             onChange={(e) => setInput(e.target.value)}
             placeholder="试试：明天下午3点到4点 组会 / 写周报 30分钟 / 周五 / 专注 / 主题"
             aria-label="命令输入"
+          />
+          <VoiceButton
+            engine={voiceEngine}
+            apiKey={voiceApiKey}
+            hint="语音输入（说完自动识别）"
+            onStart={() => { voiceBaseRef.current = input.trim() ? `${input.trim()} ` : ""; }}
+            onInterim={(text) => setInput(voiceBaseRef.current + text)}
+            onText={(text) => {
+              setInput(voiceBaseRef.current + text);
+              voiceBaseRef.current = "";
+              inputRef.current?.focus();
+            }}
           />
           <kbd>esc</kbd>
         </div>

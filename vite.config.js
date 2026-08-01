@@ -333,6 +333,32 @@ function readBody(req, maxBytes = 5 * 1024 * 1024) {
   });
 }
 
+// 读取原始二进制 body（语音上传用），默认上限 25MB（约 13 分钟 16kHz WAV）
+function readRawBody(req, maxBytes = 25 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on("data", (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        req.destroy();
+        reject(new Error("Audio body too large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function asrTranscriptionsUrl(baseUrl) {
+  const cleanBase = (baseUrl || "https://api.stepfun.com").replace(/\/+$/, "");
+  return cleanBase.endsWith("/audio/transcriptions")
+    ? cleanBase
+    : `${cleanBase}/v1/audio/transcriptions`;
+}
+
 function chatCompletionUrl(baseUrl) {
   const cleanBase = (baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   return cleanBase.endsWith("/chat/completions")
@@ -571,6 +597,61 @@ function dataProxy() {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ configured: keyOk }));
+      return;
+    }
+
+    // 语音识别代理：浏览器录音转 WAV 后上传这里，转发阶跃 ASR（Key 不落前端）。
+    // 默认端点与模型：api.stepfun.com / stepaudio-2.5-asr，可用请求头覆盖。
+    if (pathname === "/api/asr" && req.method === "POST") {
+      try {
+        const audio = await readRawBody(req);
+        const apiKey =
+          req.headers["x-api-key"] ||
+          process.env.AI_API_KEY ||
+          process.env.STEPFUN_API_KEY ||
+          process.env.DEEPSEEK_API_KEY;
+        if (!apiKey) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "缺少语音识别 API Key：请填入 StepFun Key、配置服务器环境变量，或在设置里改用「浏览器识别」。" }));
+          return;
+        }
+        if (!audio.length) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "没有收到音频数据。" }));
+          return;
+        }
+        const form = new FormData();
+        form.append("model", req.headers["x-asr-model"] || "stepaudio-2.5-asr");
+        form.append("response_format", "json");
+        form.append(
+          "file",
+          new Blob([audio], { type: req.headers["content-type"] || "audio/wav" }),
+          "audio.wav",
+        );
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60_000);
+        let upstream;
+        try {
+          upstream = await fetch(asrTranscriptionsUrl(req.headers["x-asr-base-url"]), {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}` },
+            body: form,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+        const text = await upstream.text();
+        res.statusCode = upstream.status;
+        res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
+        res.end(text);
+      } catch (error) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: error.message || "ASR proxy failed." }));
+      }
       return;
     }
 

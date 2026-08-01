@@ -9,6 +9,8 @@ export const defaultState = {
     breaks: [],
     // 打卡音效（Web Audio 合成，默认关闭）
     soundFx: false,
+    // 语音识别方式：stepfun=阶跃 ASR（经服务器代理，隐私优先）；browser=浏览器识别（无需 Key）
+    voiceEngine: "stepfun",
   },
   ai: {
     enabled: true,

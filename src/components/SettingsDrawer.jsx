@@ -171,6 +171,20 @@ export function SettingsDrawer({
             打卡音效（完成时一声轻响）
           </label>
           <label>
+            语音识别方式
+            <select
+              value={planner.settings.voiceEngine || "stepfun"}
+              onChange={(event) =>
+                patchPlanner((current) => ({
+                  settings: { ...current.settings, voiceEngine: event.target.value },
+                }))
+              }
+            >
+              <option value="stepfun">阶跃 ASR（经服务器代理，隐私优先）</option>
+              <option value="browser">浏览器识别（无需 Key，音频由浏览器厂商处理）</option>
+            </select>
+          </label>
+          <label>
             短休息 (分钟)
             <input
               type="number"
