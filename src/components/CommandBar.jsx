@@ -25,7 +25,7 @@ const KIND_ICON = {
 const VIEW_ICON = { today: CalendarDays, goals: Target, review: ListChecks };
 
 // ⌘K 全局命令条：所有解析都是本地的（commandParse），零网络、零延迟。
-export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, defaults = [], voiceEngine = "stepfun", voiceApiKey = "", voiceBaseUrl = "", voiceModel = "" }) {
+export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, defaults = [], voiceEngine = "stepfun", voiceApiKey = "", voiceBaseUrl = "", voiceModel = "", voiceAutoSend = true }) {
   const [input, setInput] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const [voiceError, setVoiceError] = useState("");
@@ -104,8 +104,18 @@ export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, d
             onError={setVoiceError}
             onInterim={(text) => setInput(voiceBaseRef.current + text)}
             onText={(text) => {
-              setInput(voiceBaseRef.current + text);
+              const full = voiceBaseRef.current + text;
               voiceBaseRef.current = "";
+              // 自动发送：识别完成即解析执行（能看懂就直接办，看不懂留文字待编辑）
+              if (voiceAutoSend) {
+                const intents = parseCommandInput(full, { selectedDate, todayStr });
+                if (intents.length > 0) {
+                  onExecute(intents[0]);
+                  onClose();
+                  return;
+                }
+              }
+              setInput(full);
               inputRef.current?.focus();
             }}
           />

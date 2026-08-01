@@ -65,6 +65,7 @@ export function TodayView({
   setPlanningCoach,
   startPlanningCoach,
   sendPlanningCoachMessage,
+  sendPlanningCoachText,
   acceptPlanningCoachSuggestions,
   showAiFollowUp,
   todayAiReply,
@@ -420,7 +421,17 @@ export function TodayView({
               onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; setVoiceError(""); }}
               onError={setVoiceError}
               onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
-              onText={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
+              onText={(text) => {
+                const full = interviewVoiceBase.current + text;
+                interviewVoiceBase.current = "";
+                // 自动发送：识别完成直接发给 AI；关闭则落输入框待确认
+                if (planner.settings.voiceAutoSend !== false) {
+                  setPlanningCoach((coach) => ({ ...coach, input: "" }));
+                  sendPlanningCoachText(full);
+                } else {
+                  setPlanningCoach((coach) => ({ ...coach, input: full }));
+                }
+              }}
             />
             <button className="primary-action" disabled={planningCoach.loading || !planningCoach.input.trim()}>
               <Send size={18} />

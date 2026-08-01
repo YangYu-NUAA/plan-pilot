@@ -14,6 +14,8 @@ export const defaultState = {
     // ASR 独立配置（与聊天模型分家；Key 单独存浏览器 localStorage，见 useLocalVoiceKey）
     voiceAsrBaseUrl: "https://api.stepfun.com",
     voiceAsrModel: "stepaudio-2.5-asr",
+    // 语音识别完成后自动发送/执行（关闭则文字落入输入框待确认）
+    voiceAutoSend: true,
   },
   ai: {
     enabled: true,

@@ -221,6 +221,18 @@ export function SettingsDrawer({
                 />
                 <span className="settings-hint">Step Plan 套餐填 https://api.stepfun.com/step_plan/v1（自动走套餐 SSE 协议）；非套餐填 https://api.stepfun.com</span>
               </label>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={planner.settings.voiceAutoSend !== false}
+                  onChange={(event) =>
+                    patchPlanner((current) => ({
+                      settings: { ...current.settings, voiceAutoSend: event.target.checked },
+                    }))
+                  }
+                />
+                识别完成后自动发送（关闭则落入输入框待确认）
+              </label>
             </div>
           )}
           <label>

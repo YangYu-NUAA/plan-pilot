@@ -1469,7 +1469,12 @@ function App() {
 
   function sendPlanningCoachMessage(event) {
     event.preventDefault();
-    const content = planningCoach.input.trim();
+    sendPlanningCoachText(planningCoach.input);
+  }
+
+  // 显式文本版本：语音自动发送等场景不经过输入框 state
+  function sendPlanningCoachText(text) {
+    const content = String(text || "").trim();
     if (!content || planningCoach.loading) return;
     const nextMessages = planningCoach.messages.concat({ role: "user", content });
     setPlanningCoach((coach) => ({ ...coach, input: "" }));
@@ -1928,6 +1933,7 @@ function App() {
             setPlanningCoach={setPlanningCoach}
             startPlanningCoach={startPlanningCoach}
             sendPlanningCoachMessage={sendPlanningCoachMessage}
+            sendPlanningCoachText={sendPlanningCoachText}
             acceptPlanningCoachSuggestions={acceptPlanningCoachSuggestions}
             showAiFollowUp={showAiFollowUp}
             todayAiReply={todayAiReply}
@@ -2002,6 +2008,7 @@ function App() {
           voiceApiKey={voiceKey || localAiKey}
           voiceBaseUrl={planner.settings.voiceAsrBaseUrl || ""}
           voiceModel={planner.settings.voiceAsrModel || ""}
+          voiceAutoSend={planner.settings.voiceAutoSend !== false}
         />
 
         {showWelcome && (
