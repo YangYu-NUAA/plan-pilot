@@ -378,6 +378,77 @@ function describeProxyError(error, label) {
   return `${label} 代理失败：${error?.message || "未知错误"}${code ? `（${code}）` : ""}`;
 }
 
+// Step Plan 套餐的 ASR 只暴露 SSE 端点（文档：「当前 Step Plan 下仅可通过
+// HTTP + SSE 方式调用」）：POST {base}/audio/asr/sse，JSON + base64 PCM，
+// 流式返回 transcript.text.delta / .done 事件。地址含 step_plan 时自动走这条协议。
+function isStepPlanAsrBase(baseUrl) {
+  return /step_plan/i.test(String(baseUrl || ""));
+}
+
+async function callStepPlanAsr({ audioWav, apiKey, baseUrl, model }) {
+  // 客户端上传的是 16kHz/16bit/单声道 WAV（44 字节头），剥头即 pcm_s16le
+  const pcm = audioWav.length > 44 ? audioWav.subarray(44) : audioWav;
+  const url = `${String(baseUrl).replace(/\/+$/, "")}/audio/asr/sse`;
+  const body = {
+    audio: {
+      data: pcm.toString("base64"),
+      input: {
+        transcription: { model: model || "stepaudio-2.5-asr", language: "zh", enable_itn: true },
+        format: { type: "pcm", codec: "pcm_s16le", rate: 16000, bits: 16, channel: 1 },
+      },
+    },
+  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  let upstream;
+  try {
+    upstream = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!upstream.ok) {
+    const text = await upstream.text();
+    let message = text.slice(0, 300);
+    try {
+      const data = JSON.parse(text);
+      message = data?.error?.message || data?.message || message;
+    } catch { /* 非 JSON 原文截断即可 */ }
+    return { status: upstream.status, body: JSON.stringify({ error: `上游 ASR 返回 ${upstream.status}：${message}` }) };
+  }
+
+  // 读完整 SSE 流再解析：短音频几秒到十几秒就结束，无需逐帧转发
+  const raw = await upstream.text();
+  let finalText = "";
+  let deltas = "";
+  let errMsg = "";
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const evt = JSON.parse(payload);
+      if (evt.type === "transcript.text.done") finalText = evt.text || finalText;
+      else if (evt.type === "transcript.text.delta") deltas += evt.delta || "";
+      else if (evt.type === "error") errMsg = evt.message || "未知错误";
+    } catch { /* 忽略心跳/注释行 */ }
+  }
+  if (errMsg) {
+    return { status: 502, body: JSON.stringify({ error: `上游 ASR 错误：${errMsg}` }) };
+  }
+  return { status: 200, body: JSON.stringify({ text: (finalText || deltas).trim() }) };
+}
+
 function chatCompletionUrl(baseUrl) {
   const cleanBase = (baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   return cleanBase.endsWith("/chat/completions")
@@ -648,6 +719,19 @@ function dataProxy() {
           res.end(JSON.stringify({ error: "语音识别代理需要 Node.js 18 或更高版本（当前环境缺少 FormData）。请升级 Node 后重启 dev server，或在设置里改用「浏览器识别」。" }));
           return;
         }
+        // Step Plan 套餐：网关只暴露 SSE 协议（/audio/asr/sse，JSON + base64 PCM）
+        if (isStepPlanAsrBase(req.headers["x-asr-base-url"])) {
+          const result = await callStepPlanAsr({
+            audioWav: audio,
+            apiKey,
+            baseUrl: req.headers["x-asr-base-url"],
+            model: req.headers["x-asr-model"],
+          });
+          res.statusCode = result.status;
+          res.setHeader("Content-Type", "application/json");
+          res.end(result.body);
+          return;
+        }
         const form = new FormData();
         form.append("model", req.headers["x-asr-model"] || "stepaudio-2.5-asr");
         form.append("response_format", "json");
@@ -674,11 +758,11 @@ function dataProxy() {
         res.setHeader("Content-Type", "application/json");
         // 上游错误若是 HTML/纯文本（404 常见），包装成 JSON 方便前端展示具体原因
         if (!upstream.ok) {
-          // 404 几乎一定是 ASR 地址填成了聊天 plan 路径——直接给出正确填法
+          // 404 几乎一定是 ASR 地址填错——给出两种情形的正确填法
           if (upstream.status === 404) {
             const tried = asrTranscriptionsUrl(req.headers["x-asr-base-url"]);
             res.end(JSON.stringify({
-              error: `ASR 端点不存在（404）：${tried}。阶跃语音识别的标准地址是 https://api.stepfun.com（与你的聊天 plan 路径 step_plan/v1 不同）——请到设置里把「ASR 地址」改为它再试。`,
+              error: `ASR 端点不存在（404）：${tried}。Step Plan 套餐用户请在设置里把「ASR 地址」填 https://api.stepfun.com/step_plan/v1（自动走套餐 SSE 协议）；非套餐用户填 https://api.stepfun.com。`,
             }));
             return;
           }

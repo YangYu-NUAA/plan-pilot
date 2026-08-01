@@ -3345,3 +3345,5 @@ li,
 }
 .cmdk-voice-error button:hover,
 .voice-inline-error button:hover { opacity: 1; }
+
+.settings-hint { font-size: 11px; color: #cbd8d3; opacity: 0.85; line-height: 1.5; font-weight: 400; }

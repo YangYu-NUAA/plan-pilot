@@ -219,6 +219,7 @@ export function SettingsDrawer({
                     }))
                   }
                 />
+                <span className="settings-hint">Step Plan 套餐填 https://api.stepfun.com/step_plan/v1（自动走套餐 SSE 协议）；非套餐填 https://api.stepfun.com</span>
               </label>
             </div>
           )}
