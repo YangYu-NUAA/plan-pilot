@@ -361,6 +361,23 @@ function asrTranscriptionsUrl(baseUrl) {
     : `${cleanBase}/v1/audio/transcriptions`;
 }
 
+// 把 Node fetch 的网络层错误翻译成可读原因（fetch failed 本身毫无信息量）。
+// error.cause.code 常见值：ENOTFOUND（域名解析失败）、ECONNREFUSED、ECONNRESET、
+// CERT_*（证书问题）、UND_ERR_HEADERS_TIMEOUT 等。
+function describeProxyError(error, label) {
+  const code = error?.cause?.code || error?.code || "";
+  const target = error?.cause?.hostname ? `（${error.cause.hostname}）` : "";
+  if (/aborted|abort/i.test(error?.message || "")) return `${label} 代理：上游请求超时（60 秒无响应）。`;
+  if (code === "ENOTFOUND") return `${label} 代理：域名解析失败${target}——检查 API 地址是否填错。`;
+  if (code === "ECONNREFUSED") return `${label} 代理：连接被拒绝${target}——服务不可达或需要代理。`;
+  if (code === "ECONNRESET") return `${label} 代理：连接被重置${target}——网络中断或被拦截。`;
+  if (/CERT|SSL|TLS/i.test(code)) return `${label} 代理：证书校验失败${target}（${code}）。`;
+  if (/fetch failed/i.test(error?.message || "")) {
+    return `${label} 代理：无法连接上游服务${target}${code ? `（${code}）` : ""}——检查网络 / API 地址 / 是否需要代理。`;
+  }
+  return `${label} 代理失败：${error?.message || "未知错误"}${code ? `（${code}）` : ""}`;
+}
+
 function chatCompletionUrl(baseUrl) {
   const cleanBase = (baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   return cleanBase.endsWith("/chat/completions")
@@ -624,6 +641,13 @@ function dataProxy() {
           res.end(JSON.stringify({ error: "没有收到音频数据。" }));
           return;
         }
+        // Node < 18 没有 FormData/Blob：明确报错而不是抛 ReferenceError 打死整个 dev server
+        if (typeof FormData === "undefined" || typeof Blob === "undefined") {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "语音识别代理需要 Node.js 18 或更高版本（当前环境缺少 FormData）。请升级 Node 后重启 dev server，或在设置里改用「浏览器识别」。" }));
+          return;
+        }
         const form = new FormData();
         form.append("model", req.headers["x-asr-model"] || "stepaudio-2.5-asr");
         form.append("response_format", "json");
@@ -662,7 +686,7 @@ function dataProxy() {
       } catch (error) {
         res.statusCode = 500;
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: error.message || "ASR proxy failed." }));
+        res.end(JSON.stringify({ error: describeProxyError(error, "ASR") }));
       }
       return;
     }
@@ -700,7 +724,7 @@ function dataProxy() {
     } catch (error) {
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: error.message || "AI proxy failed." }));
+      res.end(JSON.stringify({ error: describeProxyError(error, "AI") }));
     }
   };
 
