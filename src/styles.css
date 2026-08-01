@@ -3319,3 +3319,29 @@ li,
   height: 32px;
   font-size: 12px;
 }
+
+/* —— 语音错误内联条（⌘K / 访谈）：完整展示上游原因，可手动关闭 —— */
+.cmdk-voice-error,
+.voice-inline-error {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 12.5px; line-height: 1.55;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  padding: 9px 16px;
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.voice-inline-error {
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.cmdk-voice-error button,
+.voice-inline-error button {
+  margin-left: auto; flex-shrink: 0;
+  border: 0; background: transparent;
+  color: var(--danger); font-size: 14px; line-height: 1;
+  cursor: pointer; opacity: 0.7; padding: 2px 4px;
+}
+.cmdk-voice-error button:hover,
+.voice-inline-error button:hover { opacity: 1; }

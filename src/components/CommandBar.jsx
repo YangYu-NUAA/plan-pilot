@@ -28,6 +28,7 @@ const VIEW_ICON = { today: CalendarDays, goals: Target, review: ListChecks };
 export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, defaults = [], voiceEngine = "stepfun", voiceApiKey = "", voiceBaseUrl = "", voiceModel = "" }) {
   const [input, setInput] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
+  const [voiceError, setVoiceError] = useState("");
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const voiceBaseRef = useRef(""); // 录音开始时输入框已有内容，识别文本接在其后
@@ -41,6 +42,7 @@ export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, d
     if (open) {
       setInput("");
       setActiveIdx(0);
+      setVoiceError("");
       // 等动画起一帧再聚焦，避免移动端键盘抖动
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -98,7 +100,8 @@ export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, d
             baseUrl={voiceBaseUrl}
             model={voiceModel}
             hint="语音输入（说完自动识别）"
-            onStart={() => { voiceBaseRef.current = input.trim() ? `${input.trim()} ` : ""; }}
+            onStart={() => { voiceBaseRef.current = input.trim() ? `${input.trim()} ` : ""; setVoiceError(""); }}
+            onError={setVoiceError}
             onInterim={(text) => setInput(voiceBaseRef.current + text)}
             onText={(text) => {
               setInput(voiceBaseRef.current + text);
@@ -108,6 +111,12 @@ export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, d
           />
           <kbd>esc</kbd>
         </div>
+        {voiceError && (
+          <div className="cmdk-voice-error" role="alert">
+            {voiceError}
+            <button type="button" aria-label="关闭错误提示" onClick={() => setVoiceError("")}>×</button>
+          </div>
+        )}
         {intents.length > 0 ? (
           <ul className="cmdk-list" ref={listRef} role="listbox">
             {intents.map((intent, idx) => {

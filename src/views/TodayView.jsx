@@ -132,6 +132,7 @@ export function TodayView({
   const taskListRef = useRef(null);
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
   const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
+  const [voiceError, setVoiceError] = useState(""); // 访谈语音识别错误（内联展示）
 
   function startEditingBlock(block) {
     setEditingBlockId(block.id);
@@ -416,7 +417,8 @@ export function TodayView({
               baseUrl={planner.settings.voiceAsrBaseUrl || ""}
               model={planner.settings.voiceAsrModel || ""}
               hint="语音输入访谈内容"
-              onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; }}
+              onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; setVoiceError(""); }}
+              onError={setVoiceError}
               onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
               onText={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
             />
@@ -429,6 +431,12 @@ export function TodayView({
               {planningCoach.loading ? "AI 思考中" : "开始访谈"}
             </button>
           </div>
+          {voiceError && (
+            <div className="voice-inline-error" role="alert">
+              {voiceError}
+              <button type="button" aria-label="关闭错误提示" onClick={() => setVoiceError("")}>×</button>
+            </div>
+          )}
         </form>
       </section>
 

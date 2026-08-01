@@ -354,8 +354,10 @@ function readRawBody(req, maxBytes = 25 * 1024 * 1024) {
 
 function asrTranscriptionsUrl(baseUrl) {
   const cleanBase = (baseUrl || "https://api.stepfun.com").replace(/\/+$/, "");
-  return cleanBase.endsWith("/audio/transcriptions")
-    ? cleanBase
+  if (cleanBase.endsWith("/audio/transcriptions")) return cleanBase;
+  // baseUrl 已带 /v1（如 .../step_plan/v1）时直接拼端点，否则补 /v1——避免 /v1/v1 双前缀 404
+  return cleanBase.endsWith("/v1")
+    ? `${cleanBase}/audio/transcriptions`
     : `${cleanBase}/v1/audio/transcriptions`;
 }
 
@@ -645,8 +647,18 @@ function dataProxy() {
         }
         const text = await upstream.text();
         res.statusCode = upstream.status;
-        res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
-        res.end(text);
+        res.setHeader("Content-Type", "application/json");
+        // 上游错误若是 HTML/纯文本（404 常见），包装成 JSON 方便前端展示具体原因
+        if (!upstream.ok) {
+          try {
+            JSON.parse(text);
+            res.end(text);
+          } catch {
+            res.end(JSON.stringify({ error: `上游 ASR 返回 ${upstream.status}：${text.slice(0, 300)}` }));
+          }
+        } else {
+          res.end(text);
+        }
       } catch (error) {
         res.statusCode = 500;
         res.setHeader("Content-Type", "application/json");

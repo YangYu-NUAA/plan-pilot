@@ -10,7 +10,7 @@ import {
 
 // 通用语音输入按钮：点一下开始、再点停止；识别文字经 onText 回调（浏览器引擎
 // 另有 onInterim 流式中间结果）。确认缓冲由父组件负责——文字先落输入框，用户过目后再提交。
-export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", model = "", onText, onInterim, onStart, disabled = false, hint = "语音输入" }) {
+export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", model = "", onText, onInterim, onStart, onError, disabled = false, hint = "语音输入" }) {
   const [state, setState] = useState("idle"); // idle | recording | transcribing | error
   const [error, setError] = useState("");
   const recorderRef = useRef(null);
@@ -28,6 +28,14 @@ export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", mod
   const unsupported = engine === "browser" && !browserSpeechSupported();
 
   function flashError(message) {
+    if (onError) {
+      // 父组件接管错误展示（内联错误条），按钮只短暂变色提示
+      onError(message);
+      setState("error");
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = setTimeout(() => setState("idle"), 1600);
+      return;
+    }
     setError(message);
     setState("error");
     clearTimeout(errorTimerRef.current);
@@ -120,7 +128,7 @@ export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", mod
           </span>
         )}
       </button>
-      {state === "error" && error && <span className="voice-error">{error}</span>}
+      {state === "error" && !onError && error && <span className="voice-error">{error}</span>}
     </span>
   );
 }
