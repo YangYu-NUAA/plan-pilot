@@ -3517,3 +3517,88 @@ li,
   height: 28px;
   cursor: pointer;
 }
+
+/* ══════════════ 移动端（≤820px）：底部导航 + 全宽布局 + 触控优化 ══════════════ */
+@media (max-width: 820px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  /* 左侧轨 → 底部 tab bar（含安全区） */
+  .rail {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 90;
+    height: auto;
+    flex-direction: row; justify-content: space-around; align-items: center;
+    gap: 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .rail .brand-mark { display: none; }
+  .rail-nav { flex: 1; flex-direction: row; justify-content: space-around; gap: 0; }
+  .rail-nav button,
+  .rail-settings { width: 48px; height: 48px; min-height: 48px; border-radius: 12px; }
+  /* tooltip 在触屏无意义；激活指示条从左侧移到顶部 */
+  .rail-nav button::after,
+  .rail-settings::after { display: none; }
+  .rail-nav button::before { left: 50%; top: -7px; transform: translateX(-50%); width: 0; height: 3px; transition: width 0.18s var(--ease-out); }
+  .rail-nav button.active::before { width: 22px; height: 3px; }
+
+  .workspace { padding: 14px 12px calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .topbar h1 { font-size: 24px; }
+  .topbar { gap: 10px; margin-bottom: 12px; }
+
+  /* 统计条 2×2（覆盖 860px 时的单列堆叠） */
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .metric { min-height: 64px; padding: 10px 14px; }
+
+  /* 问候卡与规划中枢收紧 */
+  .greet-card { padding: 10px 14px; gap: 10px; }
+  .greet-body p { font-size: 13px; }
+  .planner-hub { padding: 6px 14px 12px; }
+  .omnibar kbd { display: none; }
+  .omnibar { gap: 7px; }
+
+  /* 触控目标 ≥ 40px */
+  .voice-btn { min-width: 40px; height: 40px; }
+  .omnibar-scope { height: 34px; font-size: 12.5px; }
+  .omnibar-ai { width: 36px; height: 36px; }
+  .icon-button { width: 40px; height: 40px; }
+  .check-button { width: 40px; height: 40px; }
+  .task-item { grid-template-columns: 40px minmax(0, 1fr); grid-auto-columns: 40px; min-height: 58px; }
+  .manual-toggle { min-height: 36px; align-items: center; }
+  .compact-action { min-height: 38px; }
+  .date-switcher button { width: 40px; height: 40px; }
+  .date-switcher .back-to-today { height: 40px; }
+
+  /* 弹层适配 */
+  .cmdk-overlay { padding-top: 7vh; }
+  .cmdk { width: 94vw; }
+  .welcome-card { padding: 20px 16px; max-height: 88vh; overflow-y: auto; }
+  .timeline-zoom { padding: 8px; }
+  .timeline-zoom-body { width: 100%; height: 94vh; padding: 12px 14px; }
+  .modal-content { width: min(400px, 94vw); padding: 18px; }
+
+  /* 时间分配标题栏按钮换行更紧凑 */
+  .schedule-panel .section-heading { gap: 8px; }
+  .schedule-panel .section-heading .secondary-action { padding: 0 12px; }
+}
+
+/* 触屏无 hover：时间轴块的勾选与操作按钮常驻可见，任务行按钮保持可点 */
+@media (hover: none) {
+  .dt-check { opacity: 1; }
+  .dt-actions { opacity: 1; pointer-events: auto; }
+  .dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }
+}
+
+@media (max-width: 820px) {
+  .coach-copy h2 { font-size: 17px; }
+  .coach-head-actions { gap: 6px; }
+  .coach-head-actions .compact-action { min-height: 34px; font-size: 12px; padding: 0 10px; }
+}
+
+@media (max-width: 820px) {
+  .interview-panel .section-heading h2 { font-size: 17px; }
+  .interview-panel .section-heading { flex-wrap: nowrap; }
+  .interview-panel .section-heading > div { min-width: 0; }
+  .interview-panel .section-heading h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
