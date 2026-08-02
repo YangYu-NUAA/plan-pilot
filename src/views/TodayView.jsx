@@ -8,6 +8,7 @@ import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
+import { VoiceButton } from "../components/ui/VoiceButton.jsx";
 import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
 import { Metric, MetricRing } from "../components/ui/Metric.jsx";
@@ -64,6 +65,7 @@ export function TodayView({
   setPlanningCoach,
   startPlanningCoach,
   sendPlanningCoachMessage,
+  sendPlanningCoachText,
   acceptPlanningCoachSuggestions,
   showAiFollowUp,
   todayAiReply,
@@ -73,6 +75,7 @@ export function TodayView({
   onStartFocus,
   ai,
   localAiKey,
+  voiceKey,
   serverAiKeyLoaded,
 }) {
   const overload = plannedMinutes > workMinutes;
@@ -129,6 +132,8 @@ export function TodayView({
   }, [timelineZoom]);
   const taskListRef = useRef(null);
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
+  const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
+  const [voiceError, setVoiceError] = useState(""); // 访谈语音识别错误（内联展示）
 
   function startEditingBlock(block) {
     setEditingBlockId(block.id);
@@ -407,6 +412,27 @@ export function TodayView({
             placeholder="回答 AI 的问题，或直接描述：今天/本周/月度/长期想推进什么"
           />
           <div className="interview-actions">
+            <VoiceButton
+              engine={planner.settings.voiceEngine || "stepfun"}
+              apiKey={voiceKey || localAiKey}
+              baseUrl={planner.settings.voiceAsrBaseUrl || ""}
+              model={planner.settings.voiceAsrModel || ""}
+              hint="语音输入访谈内容"
+              onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; setVoiceError(""); }}
+              onError={setVoiceError}
+              onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
+              onText={(text) => {
+                const full = interviewVoiceBase.current + text;
+                interviewVoiceBase.current = "";
+                // 自动发送：识别完成直接发给 AI；关闭则落输入框待确认
+                if (planner.settings.voiceAutoSend !== false) {
+                  setPlanningCoach((coach) => ({ ...coach, input: "" }));
+                  sendPlanningCoachText(full);
+                } else {
+                  setPlanningCoach((coach) => ({ ...coach, input: full }));
+                }
+              }}
+            />
             <button className="primary-action" disabled={planningCoach.loading || !planningCoach.input.trim()}>
               <Send size={18} />
               发送
@@ -416,6 +442,12 @@ export function TodayView({
               {planningCoach.loading ? "AI 思考中" : "开始访谈"}
             </button>
           </div>
+          {voiceError && (
+            <div className="voice-inline-error" role="alert">
+              {voiceError}
+              <button type="button" aria-label="关闭错误提示" onClick={() => setVoiceError("")}>×</button>
+            </div>
+          )}
         </form>
       </section>
 

@@ -9,6 +9,13 @@ export const defaultState = {
     breaks: [],
     // 打卡音效（Web Audio 合成，默认关闭）
     soundFx: false,
+    // 语音识别方式：stepfun=阶跃 ASR（经服务器代理，隐私优先）；browser=浏览器识别（无需 Key）
+    voiceEngine: "stepfun",
+    // ASR 独立配置（与聊天模型分家；Key 单独存浏览器 localStorage，见 useLocalVoiceKey）
+    voiceAsrBaseUrl: "https://api.stepfun.com",
+    voiceAsrModel: "stepaudio-2.5-asr",
+    // 语音识别完成后自动发送/执行（关闭则文字落入输入框待确认）
+    voiceAutoSend: true,
   },
   ai: {
     enabled: true,

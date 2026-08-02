@@ -33,6 +33,8 @@ export function SettingsDrawer({
   applyAiProviderPreset,
   localAiKey,
   updateLocalAiKey,
+  voiceKey,
+  updateVoiceKey,
   serverAiKeyLoaded,
   aiKeyLoaded,
   currentAiPreset,
@@ -170,6 +172,69 @@ export function SettingsDrawer({
             />
             打卡音效（完成时一声轻响）
           </label>
+          <label className="settings-span-2">
+            语音识别方式
+            <select
+              value={planner.settings.voiceEngine || "stepfun"}
+              onChange={(event) =>
+                patchPlanner((current) => ({
+                  settings: { ...current.settings, voiceEngine: event.target.value },
+                }))
+              }
+            >
+              <option value="stepfun">阶跃 ASR（经服务器代理，隐私优先）</option>
+              <option value="browser">浏览器识别（无需 Key，音频由浏览器厂商处理）</option>
+            </select>
+          </label>
+          {(planner.settings.voiceEngine || "stepfun") === "stepfun" && (
+            <div className="settings-voice-asr settings-span-2">
+              <label>
+                语音 ASR Key（独立于聊天 Key）
+                <input
+                  type="password"
+                  value={voiceKey}
+                  onChange={(event) => updateVoiceKey(event.target.value)}
+                  placeholder="留空则回落：聊天 Key → 服务器环境变量"
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                ASR 模型
+                <input
+                  value={planner.settings.voiceAsrModel || "stepaudio-2.5-asr"}
+                  onChange={(event) =>
+                    patchPlanner((current) => ({
+                      settings: { ...current.settings, voiceAsrModel: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                ASR 地址
+                <input
+                  value={planner.settings.voiceAsrBaseUrl || "https://api.stepfun.com"}
+                  onChange={(event) =>
+                    patchPlanner((current) => ({
+                      settings: { ...current.settings, voiceAsrBaseUrl: event.target.value },
+                    }))
+                  }
+                />
+                <span className="settings-hint">Step Plan 套餐填 https://api.stepfun.com/step_plan/v1（自动走套餐 SSE 协议）；非套餐填 https://api.stepfun.com</span>
+              </label>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={planner.settings.voiceAutoSend !== false}
+                  onChange={(event) =>
+                    patchPlanner((current) => ({
+                      settings: { ...current.settings, voiceAutoSend: event.target.checked },
+                    }))
+                  }
+                />
+                识别完成后自动发送（关闭则落入输入框待确认）
+              </label>
+            </div>
+          )}
           <label>
             短休息 (分钟)
             <input
