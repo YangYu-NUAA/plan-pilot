@@ -87,6 +87,23 @@ export function TodayView({
       .slice(0, 2),
     [planner.tasks, selectedDate],
   );
+  // 任务列表收起/展开：默认只露前几条，整页长度塌缩；状态存本地
+  const [tasksExpanded, setTasksExpanded] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-tasks-expanded") === "1"; } catch { return false; }
+  });
+  const TASKS_COLLAPSED_COUNT = 4;
+  const sortedTodayTasks = useMemo(
+    () => [...todayTasks].sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]),
+    [todayTasks],
+  );
+  const visibleTodayTasks = tasksExpanded ? sortedTodayTasks : sortedTodayTasks.slice(0, TASKS_COLLAPSED_COUNT);
+  function toggleTasksExpanded() {
+    setTasksExpanded((cur) => {
+      const next = !cur;
+      try { localStorage.setItem("plan-pilot-tasks-expanded", next ? "1" : "0"); } catch (e) { /* ignore */ }
+      return next;
+    });
+  }
   // 逾期未完成：早于当前日期、仍未完成的任务（否则它们会从「今日」视图里彻底消失、被遗忘）
   // 逾期相对【真正的今天】，且只在查看真正今天时才列——手动翻到明天/别的日期只是浏览，不该把今天的任务标成逾期。
   // 真正的换天由系统午夜自动滚动（见 App 里的跨天定时器）触发，那时才算逾期。
@@ -239,6 +256,7 @@ export function TodayView({
         apiKey={localAiKey}
         serverKeyOk={serverAiKeyLoaded}
       />
+      <div className="planner-hub">
       <OmniBar
         onExecute={onExecCommand}
         onAiChat={(text) => {
@@ -255,7 +273,6 @@ export function TodayView({
         voiceModel={planner.settings.voiceAsrModel || ""}
         voiceAutoSend={planner.settings.voiceAutoSend !== false}
       />
-      <div className="cockpit-grid">
       <section className="coach-band">
         <div className="coach-copy">
           <div>
@@ -476,7 +493,9 @@ export function TodayView({
           )}
         </div>
       </section>
+      </div>
 
+      <div className="cockpit-grid">
       <section className="stats-row">
         <MetricRing done={completedCount} total={todayTasks.length} />
         <Metric label="预计" value={`${plannedMinutes} 分钟`} tone={overload ? "danger" : ""} />
@@ -620,8 +639,7 @@ export function TodayView({
               }
             />
           )}
-          {todayTasks
-            .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
+          {visibleTodayTasks
             .map((task) => {
               const isEditing = editingTaskId === task.id;
               const parentGoal = task.goalId && goalById[task.goalId];
@@ -746,7 +764,12 @@ export function TodayView({
               </article>
             );
             })}
-        {futureTasks.length > 0 && (
+        {(sortedTodayTasks.length > TASKS_COLLAPSED_COUNT || futureTasks.length > 0) && (
+          <button type="button" className="tasks-expand-toggle" onClick={toggleTasksExpanded}>
+            {tasksExpanded ? "收起列表" : `展开全部（共 ${sortedTodayTasks.length + futureTasks.length} 条）`}
+          </button>
+        )}
+        {tasksExpanded && futureTasks.length > 0 && (
           <>
             <div className="future-divider">未来待办</div>
             {futureTasks.map((task) => (
