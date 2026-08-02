@@ -2750,7 +2750,37 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-/* —— 今日页驾驶舱布局（两列：左日历主角 + 右控件栏 + 顶部统计条） —— */
+/* 顶部规划中枢：OmniBar + 晨间问题摘要 + AI 对话视图，合并为一张卡片 */
+.planner-hub {
+  width: 100%; max-width: 1560px; margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 8px 18px 14px;
+}
+/* 卡片内的三个区域去掉自身卡片壳，用 hairline 分隔 */
+.planner-hub .omnibar-wrap { max-width: none; }
+.planner-hub .omnibar {
+  border: 0; box-shadow: none; border-radius: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.planner-hub .omnibar:focus-within { box-shadow: none; border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.planner-hub .coach-band {
+  background: transparent; border: 0; box-shadow: none; border-radius: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hair);
+  gap: 10px;
+}
+.planner-hub .interview-panel {
+  background: transparent; border: 0; box-shadow: none; border-radius: 0;
+  padding: 12px 0 2px;
+}
+.planner-hub .interview-panel .section-heading { margin-bottom: 8px; }
+.planner-hub .empty-state { border: 0; padding: 14px 16px; }
+
+/* —— 今日页驾驶舱布局（两列：左日历主角 + 右任务栏 + 顶部统计条） —— */
 .cockpit-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.62fr) minmax(360px, 1fr);
@@ -2762,16 +2792,12 @@ textarea:focus-visible {
   min-height: 0;
 }
 .cockpit-grid > .stats-row { grid-column: 1 / -1; grid-row: 1; }
-.cockpit-grid > .schedule-panel { grid-column: 1; grid-row: 2 / span 3; display: flex; flex-direction: column; min-height: 0; }
-.cockpit-grid > .coach-band { grid-column: 2; grid-row: 2; }
-.cockpit-grid > .interview-panel { grid-column: 2; grid-row: 3; }
-.cockpit-grid > .task-panel { grid-column: 2; grid-row: 4; }
+.cockpit-grid > .schedule-panel { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; min-height: 0; }
+.cockpit-grid > .task-panel { grid-column: 2; grid-row: 2; }
 @media (max-width: 1100px) {
   .cockpit-grid { grid-template-columns: 1fr; max-width: 720px; }
   .cockpit-grid > .stats-row,
   .cockpit-grid > .schedule-panel,
-  .cockpit-grid > .coach-band,
-  .cockpit-grid > .interview-panel,
   .cockpit-grid > .task-panel { grid-column: 1; grid-row: auto; }
 }
 
@@ -3350,3 +3376,144 @@ li,
 .voice-inline-error button:hover { opacity: 1; }
 
 .settings-hint { font-size: 11px; color: #cbd8d3; opacity: 0.85; line-height: 1.5; font-weight: 400; }
+
+/* —— OmniBar 常驻输入栏：首页统一入口 —— */
+.omnibar-wrap {
+  position: relative;
+  width: 100%; max-width: 1560px; margin: 0 auto;
+}
+.omnibar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  padding: 7px 8px 7px 10px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color .15s, box-shadow .15s;
+}
+.omnibar:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.omnibar input {
+  flex: 1; min-width: 0;
+  border: 0; background: transparent; padding: 4px 2px;
+  font-size: 14.5px; color: var(--text);
+  outline: none;
+}
+.omnibar input::placeholder { color: var(--faint); }
+.omnibar .voice-btn { border-radius: var(--radius-pill); }
+.omnibar-ai {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; flex-shrink: 0;
+  border: 0; border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  transition: filter .12s;
+}
+.omnibar-ai:hover { filter: brightness(0.96); }
+.omnibar kbd {
+  font-family: inherit; font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 7px;
+  margin-right: 4px;
+}
+.omnibar-note {
+  position: absolute; top: calc(100% + 6px); right: 18px; z-index: 10;
+  font-size: 12px; color: var(--accent);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 8px;
+  padding: 5px 10px;
+  box-shadow: var(--shadow-sm);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.omnibar-voice-error { margin-top: 6px; }
+
+/* —— 手动表单收起：表单降级为「高级模式」 —— */
+.manual-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+  margin-bottom: 8px;
+  transition: color .12s;
+}
+.manual-toggle:hover { color: var(--ink); }
+.manual-toggle svg { transition: transform var(--dur-fast) var(--ease-out); }
+.manual-toggle.is-open svg { transform: rotate(45deg); }
+.manual-form-wrap {
+  animation: fade-in-up var(--dur-med) var(--ease-out);
+}
+
+/* —— 语音状态文字（录音中/识别中，不止图标动画） —— */
+.omnibar-status {
+  position: absolute; top: calc(100% + 6px); left: 18px; z-index: 10;
+  font-size: 12px; color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  box-shadow: var(--shadow-sm);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.omnibar-status.is-live { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.voice-status { font-size: 12px; color: var(--text-muted); align-self: center; }
+.voice-status.is-live { color: var(--danger); }
+
+/* —— 访谈面板纯对话视图 + 晨间问题收编 —— */
+.coach-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.coach-head-actions .compact-action { min-height: 32px; font-size: 12.5px; padding: 0 12px; }
+.coach-head-actions .manual-toggle { margin-bottom: 0; }
+.coach-summary { margin: 2px 0 0; font-size: 12px; color: var(--faint); }
+
+/* OmniBar 转发后访谈面板轻微闪烁，引导视线 */
+@keyframes coach-flash-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  60% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.interview-panel.coach-flash {
+  animation: coach-flash-ring 0.6s ease-out 2;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.interview-reply-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+  text-align: right;
+}
+
+/* 任务列表收起/展开开关 */
+.tasks-expand-toggle {
+  display: block; width: 100%;
+  border: 0; background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px; font-weight: 600;
+  padding: 9px 4px;
+  cursor: pointer;
+  text-align: center;
+  border-top: 1px solid var(--hair);
+  transition: color .12s;
+}
+.tasks-expand-toggle:hover { color: var(--accent); }
+
+/* OmniBar 行内的访谈范围选择器（紧凑） */
+.omnibar-scope {
+  flex-shrink: 0;
+  width: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 3px 8px;
+  height: 28px;
+  cursor: pointer;
+}

@@ -106,11 +106,13 @@ export function CommandBar({ open, onClose, onExecute, selectedDate, todayStr, d
             onText={(text) => {
               const full = voiceBaseRef.current + text;
               voiceBaseRef.current = "";
-              // 自动发送：识别完成即解析执行（能看懂就直接办，看不懂留文字待编辑）
+              // 自动发送：仅强结构化指令（排块/跳日期/命令）直接执行；
+              // 建任务等其他意图落到列表里，由你 ↑↓+↵ 确认后生效
               if (voiceAutoSend) {
                 const intents = parseCommandInput(full, { selectedDate, todayStr });
-                if (intents.length > 0) {
-                  onExecute(intents[0]);
+                const strong = intents.find((i) => i.kind !== "add-task");
+                if (strong) {
+                  onExecute(strong);
                   onClose();
                   return;
                 }

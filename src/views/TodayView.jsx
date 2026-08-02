@@ -8,7 +8,7 @@ import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
-import { VoiceButton } from "../components/ui/VoiceButton.jsx";
+import { OmniBar } from "../components/OmniBar.jsx";
 import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
 import { Metric, MetricRing } from "../components/ui/Metric.jsx";
@@ -64,8 +64,9 @@ export function TodayView({
   planningCoach,
   setPlanningCoach,
   startPlanningCoach,
-  sendPlanningCoachMessage,
   sendPlanningCoachText,
+  forwardToCoach,
+  onExecCommand,
   acceptPlanningCoachSuggestions,
   showAiFollowUp,
   todayAiReply,
@@ -86,6 +87,24 @@ export function TodayView({
       .slice(0, 2),
     [planner.tasks, selectedDate],
   );
+  // 任务列表收起/展开：默认只露前几条，整页长度塌缩；状态存本地
+  const [tasksExpanded, setTasksExpanded] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-tasks-expanded") === "1"; } catch { return false; }
+  });
+  const TASKS_COLLAPSED_COUNT = 4;
+  const OVERDUE_COLLAPSED_COUNT = 2; // 逾期区默认只露 2 条（避免一堆逾期把列表撑爆）
+  const sortedTodayTasks = useMemo(
+    () => [...todayTasks].sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]),
+    [todayTasks],
+  );
+  const visibleTodayTasks = tasksExpanded ? sortedTodayTasks : sortedTodayTasks.slice(0, TASKS_COLLAPSED_COUNT);
+  function toggleTasksExpanded() {
+    setTasksExpanded((cur) => {
+      const next = !cur;
+      try { localStorage.setItem("plan-pilot-tasks-expanded", next ? "1" : "0"); } catch (e) { /* ignore */ }
+      return next;
+    });
+  }
   // 逾期未完成：早于当前日期、仍未完成的任务（否则它们会从「今日」视图里彻底消失、被遗忘）
   // 逾期相对【真正的今天】，且只在查看真正今天时才列——手动翻到明天/别的日期只是浏览，不该把今天的任务标成逾期。
   // 真正的换天由系统午夜自动滚动（见 App 里的跨天定时器）触发，那时才算逾期。
@@ -96,6 +115,7 @@ export function TodayView({
       .filter((t) => t.date < realToday && t.status !== "done")
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : priorityOrder[b.priority] - priorityOrder[a.priority]));
   }, [planner.tasks, selectedDate]);
+  const visibleOverdueTasks = tasksExpanded ? overdueTasks : overdueTasks.slice(0, OVERDUE_COLLAPSED_COUNT);
   const [deferringTaskId, setDeferringTaskId] = useState(null);
   const chatScrollRef = useRef(null);
 
@@ -132,8 +152,56 @@ export function TodayView({
   }, [timelineZoom]);
   const taskListRef = useRef(null);
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
-  const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
-  const [voiceError, setVoiceError] = useState(""); // 访谈语音识别错误（内联展示）
+  const [coachFlash, setCoachFlash] = useState(false); // OmniBar 转发后访谈面板高亮闪烁
+  // 晨间问题默认收起为摘要行（AI 晨间引导是主推路径），手填展开状态存本地
+  const [coachExpanded, setCoachExpanded] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-coach-expanded") === "1"; } catch { return false; }
+  });
+  // 对话区默认隐藏：输入/语音/点「开始访谈」才展开；点 × 或「加入计划」后收回原样
+  const [conversationOpen, setConversationOpen] = useState(false);
+  const conversationActive =
+    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
+
+  function changeCoachScope(value) {
+    setPlanningCoach((coach) => ({
+      ...coach,
+      scope: value,
+      messages: [],
+      suggestions: [],
+      draft: emptyDraft(),
+      error: "",
+    }));
+  }
+
+  function closeCoachConversation() {
+    setPlanningCoach((coach) => ({ ...coach, messages: [], suggestions: [], draft: emptyDraft(), error: "", input: "" }));
+    setConversationOpen(false);
+  }
+
+  function handleStartInterview() {
+    setConversationOpen(true);
+    startPlanningCoach();
+  }
+
+  function handleAcceptSuggestions() {
+    acceptPlanningCoachSuggestions();
+    closeCoachConversation();
+  }
+
+  // 手动表单降级为「高级模式」：默认收起，状态存本地（OmniBar 是主输入方式）
+  const [showTaskForm, setShowTaskForm] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-manual-task-form") === "1"; } catch { return false; }
+  });
+  const [showBlockForm, setShowBlockForm] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-manual-block-form") === "1"; } catch { return false; }
+  });
+  function toggleFormStorage(setter, key) {
+    setter((cur) => {
+      const next = !cur;
+      try { localStorage.setItem(key, next ? "1" : "0"); } catch (e) { /* ignore */ }
+      return next;
+    });
+  }
 
   function startEditingBlock(block) {
     setEditingBlockId(block.id);
@@ -221,26 +289,71 @@ export function TodayView({
         apiKey={localAiKey}
         serverKeyOk={serverAiKeyLoaded}
       />
-      <div className="cockpit-grid">
+      <div className="planner-hub">
+      <OmniBar
+        onExecute={onExecCommand}
+        onAiChat={(text) => {
+          forwardToCoach(text);
+          // 转发后访谈面板轻微闪烁，引导视线到对话出现的位置
+          setCoachFlash(true);
+          setTimeout(() => setCoachFlash(false), 1200);
+        }}
+        selectedDate={selectedDate}
+        todayStr={getLocalDate()}
+        voiceEngine={planner.settings.voiceEngine || "stepfun"}
+        voiceApiKey={voiceKey || localAiKey}
+        voiceBaseUrl={planner.settings.voiceAsrBaseUrl || ""}
+        voiceModel={planner.settings.voiceAsrModel || ""}
+        voiceAutoSend={planner.settings.voiceAutoSend !== false}
+        coachScope={planningCoach.scope}
+        onScopeChange={changeCoachScope}
+        onStartInterview={handleStartInterview}
+      />
       <section className="coach-band">
         <div className="coach-copy">
           <div>
             <p className="eyebrow">晨间问题</p>
             <h2 style={{ color: energyColor(dayPlan.energy) }}>{formatHumanDate(selectedDate)}</h2>
+            {!coachExpanded && (
+              <p className="coach-summary">
+                {dayPlan.morningDone ? "已保存" : dayPlan.fixed || dayPlan.topThree || dayPlan.changes ? "有未保存内容" : "未填写"}
+              </p>
+            )}
           </div>
-          <select
-            className="energy-select"
-            value={dayPlan.energy}
-            onChange={(event) => updateDayPlan({ energy: event.target.value })}
-            aria-label="今日精力"
-          >
-            {energyOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <div className="coach-head-actions">
+            <select
+              className="energy-select"
+              value={dayPlan.energy}
+              onChange={(event) => updateDayPlan({ energy: event.target.value })}
+              aria-label="今日精力"
+            >
+              {energyOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="compact-action"
+              onClick={startPlanningCoach}
+              disabled={planningCoach.loading}
+              title="AI 逐轮提问：固定安排、今日重点……直接用上方输入栏（或语音）回答"
+            >
+              <Sparkles size={15} />
+              AI 晨间引导
+            </button>
+            <button
+              type="button"
+              className={`manual-toggle${coachExpanded ? " is-open" : ""}`}
+              onClick={() => toggleFormStorage(setCoachExpanded, "plan-pilot-coach-expanded")}
+            >
+              <Plus size={14} /> {coachExpanded ? "收起" : "手填"}
+            </button>
+          </div>
         </div>
+        {coachExpanded && (
+        <div className="manual-form-wrap">
         <div className="question-grid">
           <label>
             固定安排
@@ -277,6 +390,8 @@ export function TodayView({
             {aiStatus.loading ? "AI 思考中" : "今日建议"}
           </button>
         </div>
+        </div>
+        )}
         {aiStatus.message && <span className={`ai-message ${aiStatus.loading ? "is-loading" : ""}`}>{aiStatus.message}</span>}
         {aiStatus.error && <span className="ai-error">{aiStatus.error}</span>}
         {showAiFollowUp && (
@@ -322,37 +437,23 @@ export function TodayView({
         )}
       </section>
 
-      <section className="panel interview-panel">
+      {conversationActive && (
+      <section className={`panel interview-panel${coachFlash ? " coach-flash" : ""}`}>
         <div className="section-heading">
           <div>
             <p className="eyebrow">AI 规划访谈</p>
             <h2>让模型主动问，再帮你拆</h2>
           </div>
-          <select
-            value={planningCoach.scope}
-            onChange={(event) =>
-              setPlanningCoach((coach) => ({
-                ...coach,
-                scope: event.target.value,
-                messages: [],
-                suggestions: [],
-                draft: emptyDraft(),
-                error: "",
-              }))
-            }
-          >
-            <option value="today">今天</option>
-            <option value="week">本周</option>
-            <option value="month">月度</option>
-            <option value="long">长期</option>
-          </select>
+          <button type="button" className="icon-button" title="结束对话并收起" aria-label="结束对话并收起" onClick={closeCoachConversation}>
+            <X size={16} />
+          </button>
         </div>
 
         <div className="interview-body">
           {planningCoach.messages.length === 0 && planningCoach.suggestions.length === 0 && !planningCoach.loading && (
             <EmptyState
               illustration="chat"
-              text="选好上方范围 → 点「开始访谈」。AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。长期范围会逐个方向引导你列出可能遗忘的目标。"
+              text="在上方输入栏说话或打字即可开始——AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。"
             />
           )}
           {(planningCoach.messages.length > 0 || planningCoach.loading) && (
@@ -379,6 +480,9 @@ export function TodayView({
               </div>
             </div>
           )}
+          {planningCoach.messages.length > 0 && !planningCoach.loading && (
+            <p className="interview-reply-hint">在上方输入栏继续回答 ↗</p>
+          )}
 
           {planningCoach.error && <div className="ai-error block">{planningCoach.error}</div>}
 
@@ -397,60 +501,18 @@ export function TodayView({
                   </span>
                 </article>
               ))}
-              <button className="primary-action" onClick={acceptPlanningCoachSuggestions}>
+              <button className="primary-action" onClick={handleAcceptSuggestions}>
                 <Plus size={18} />
                 加入计划
               </button>
             </div>
           )}
         </div>
-
-        <form className="interview-form" onSubmit={sendPlanningCoachMessage}>
-          <textarea
-            value={planningCoach.input}
-            onChange={(event) => setPlanningCoach((coach) => ({ ...coach, input: event.target.value }))}
-            placeholder="回答 AI 的问题，或直接描述：今天/本周/月度/长期想推进什么"
-          />
-          <div className="interview-actions">
-            <VoiceButton
-              engine={planner.settings.voiceEngine || "stepfun"}
-              apiKey={voiceKey || localAiKey}
-              baseUrl={planner.settings.voiceAsrBaseUrl || ""}
-              model={planner.settings.voiceAsrModel || ""}
-              hint="语音输入访谈内容"
-              onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; setVoiceError(""); }}
-              onError={setVoiceError}
-              onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
-              onText={(text) => {
-                const full = interviewVoiceBase.current + text;
-                interviewVoiceBase.current = "";
-                // 自动发送：识别完成直接发给 AI；关闭则落输入框待确认
-                if (planner.settings.voiceAutoSend !== false) {
-                  setPlanningCoach((coach) => ({ ...coach, input: "" }));
-                  sendPlanningCoachText(full);
-                } else {
-                  setPlanningCoach((coach) => ({ ...coach, input: full }));
-                }
-              }}
-            />
-            <button className="primary-action" disabled={planningCoach.loading || !planningCoach.input.trim()}>
-              <Send size={18} />
-              发送
-            </button>
-            <button type="button" className="secondary-action" onClick={startPlanningCoach} disabled={planningCoach.loading}>
-              <Sparkles size={18} />
-              {planningCoach.loading ? "AI 思考中" : "开始访谈"}
-            </button>
-          </div>
-          {voiceError && (
-            <div className="voice-inline-error" role="alert">
-              {voiceError}
-              <button type="button" aria-label="关闭错误提示" onClick={() => setVoiceError("")}>×</button>
-            </div>
-          )}
-        </form>
       </section>
+      )}
+      </div>
 
+      <div className="cockpit-grid">
       <section className="stats-row">
         <MetricRing done={completedCount} total={todayTasks.length} />
         <Metric label="预计" value={`${plannedMinutes} 分钟`} tone={overload ? "danger" : ""} />
@@ -464,6 +526,15 @@ export function TodayView({
             <h2>今天要做什么</h2>
           </div>
         </div>
+        <button
+          type="button"
+          className={`manual-toggle${showTaskForm ? " is-open" : ""}`}
+          onClick={() => toggleFormStorage(setShowTaskForm, "plan-pilot-manual-task-form")}
+        >
+          <Plus size={14} /> {showTaskForm ? "收起手动添加" : "手动添加"}
+        </button>
+        {showTaskForm && (
+        <div className="manual-form-wrap">
         <form className="task-form" onSubmit={addTask}>
           <input
             name="title"
@@ -516,6 +587,8 @@ export function TodayView({
             添加
           </button>
         </form>
+        </div>
+        )}
 
         <div className="task-list" ref={taskListRef}>
           {overdueTasks.length > 0 && (
@@ -524,7 +597,7 @@ export function TodayView({
                 <Clock3 size={14} />
                 逾期未完成 · {overdueTasks.length}
               </div>
-              {overdueTasks.map((task) => (
+              {visibleOverdueTasks.map((task) => (
                 <article className="overdue-item" key={task.id}>
                   <div className="overdue-main">
                     <strong>{task.title}</strong>
@@ -583,8 +656,7 @@ export function TodayView({
               }
             />
           )}
-          {todayTasks
-            .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority])
+          {visibleTodayTasks
             .map((task) => {
               const isEditing = editingTaskId === task.id;
               const parentGoal = task.goalId && goalById[task.goalId];
@@ -709,7 +781,12 @@ export function TodayView({
               </article>
             );
             })}
-        {futureTasks.length > 0 && (
+        {(sortedTodayTasks.length > TASKS_COLLAPSED_COUNT || overdueTasks.length > OVERDUE_COLLAPSED_COUNT || futureTasks.length > 0) && (
+          <button type="button" className="tasks-expand-toggle" onClick={toggleTasksExpanded}>
+            {tasksExpanded ? "收起列表" : `展开全部（共 ${sortedTodayTasks.length + overdueTasks.length + futureTasks.length} 条）`}
+          </button>
+        )}
+        {tasksExpanded && futureTasks.length > 0 && (
           <>
             <div className="future-divider">未来待办</div>
             {futureTasks.map((task) => (
@@ -841,6 +918,15 @@ export function TodayView({
           </div>
         )}
 
+        <button
+          type="button"
+          className={`manual-toggle${showBlockForm ? " is-open" : ""}`}
+          onClick={() => toggleFormStorage(setShowBlockForm, "plan-pilot-manual-block-form")}
+        >
+          <Plus size={14} /> {showBlockForm ? "收起手动排块" : "手动排块"}
+        </button>
+        {showBlockForm && (
+        <div className="manual-form-wrap">
         <form className="block-form" onSubmit={addManualBlock}>
           <select
             name="type"
@@ -895,6 +981,8 @@ export function TodayView({
             添加
           </button>
         </form>
+        </div>
+        )}
 
         {scheduleQuestions.length > 0 && (
           <div className="schedule-questions">

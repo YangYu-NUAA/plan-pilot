@@ -266,36 +266,6 @@ function App() {
   );
   const availableMinutes = Math.max(0, workMinutes - busyMinutes);
   const completedCount = todayTasks.filter((task) => task.status === "done").length;
-  const upcomingHighlights = useMemo(() => {
-    const weekGoals = planner.goals
-      .filter((g) => g.type === "week" && g.status === "active")
-      .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
-    const monthGoals = planner.goals
-      .filter((g) => g.type === "month" && g.status === "active")
-      .sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
-    const nextBusy = planner.blocks
-      .filter((b) => (b.type === "busy" || b.id?.startsWith("rec-")) && b.date >= selectedDate)
-      .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
-    const fixedTask = planner.tasks
-      .filter((t) => t.kind === "fixed" && t.date >= selectedDate)
-      .sort((a, b) => a.date.localeCompare(b.date))[0];
-    const bestBusy = nextBusy[0];
-    let busy = null;
-    if (bestBusy && fixedTask) {
-      busy = (bestBusy.date + bestBusy.start).localeCompare(fixedTask.date) <= 0 ? bestBusy : { title: fixedTask.title, date: fixedTask.date, start: "" };
-    } else {
-      busy = bestBusy || (fixedTask ? { title: fixedTask.title, date: fixedTask.date, start: "" } : null);
-    }
-    const weekGoal = weekGoals[0] || null;
-    const monthGoal = monthGoals[0] || null;
-    const goalById = Object.fromEntries(planner.goals.map((g) => [g.id, g]));
-    return {
-      week: weekGoal ? { ...weekGoal, parentTitle: weekGoal.parentId ? goalById[weekGoal.parentId]?.title : "" } : null,
-      month: monthGoal ? { ...monthGoal, parentTitle: monthGoal.parentId ? goalById[monthGoal.parentId]?.title : "" } : null,
-      busy,
-    };
-  }, [planner.goals, planner.blocks, planner.tasks, selectedDate]);
-
   // 今日建议对话进行中（已生成、且 AI 尚未判定 done）就一直显示回答框，支持「持续引导直到用户说没有更多」。
   const showAiFollowUp = todayGuideActive && !aiStatus.loading;
 
@@ -1374,7 +1344,7 @@ function App() {
     setAiTaskSuggestions([]);
   }
 
-  async function runPlanningCoach(nextMessages) {
+  async function runPlanningCoach(nextMessages, scopeOverride) {
     if (!planner.ai.enabled) {
       setPlanningCoach((coach) => ({
         ...coach,
@@ -1406,7 +1376,7 @@ function App() {
             role: "user",
             content: JSON.stringify({
               today: selectedDate,
-              interviewScope: planningCoach.scope,
+              interviewScope: scopeOverride || planningCoach.scope,
               dayPlan,
               existingGoals: planner.goals.map(({ id, title, type, parentId, status }) => ({ id, title, type, parentId, status })),
               existingTasks: planner.tasks.map(({ title, date, estimateMinutes, priority, status, goalId }) => ({
@@ -1473,12 +1443,34 @@ function App() {
   }
 
   // 显式文本版本：语音自动发送等场景不经过输入框 state
-  function sendPlanningCoachText(text) {
+  function sendPlanningCoachText(text, scopeOverride) {
     const content = String(text || "").trim();
     if (!content || planningCoach.loading) return;
     const nextMessages = planningCoach.messages.concat({ role: "user", content });
     setPlanningCoach((coach) => ({ ...coach, input: "" }));
-    runPlanningCoach(nextMessages);
+    runPlanningCoach(nextMessages, scopeOverride);
+  }
+
+  // OmniBar 转发入口：按文本关键词推断访谈范围（本周/月度/长期），
+  // 仅在首轮（对话为空）切换 scope——进行中的对话绝不被推断打断。
+  function inferCoachScope(text) {
+    const t = String(text || "");
+    if (/长期|今年|一年|年度/.test(t)) return "long";
+    if (/月度|这个月|本月/.test(t)) return "month";
+    if (/本周|这周|下周|一周/.test(t)) return "week";
+    return null;
+  }
+
+  function forwardToCoach(text) {
+    const content = String(text || "").trim();
+    if (!content) return;
+    const inferred = inferCoachScope(content);
+    let scopeOverride = null;
+    if (inferred && planningCoach.messages.length === 0 && inferred !== planningCoach.scope) {
+      scopeOverride = inferred;
+      setPlanningCoach((coach) => ({ ...coach, scope: inferred }));
+    }
+    sendPlanningCoachText(content, scopeOverride);
   }
 
   function acceptPlanningCoachSuggestions() {
@@ -1639,6 +1631,7 @@ function App() {
       messages: [],
       input: "",
       suggestions: [],
+      draft: emptyDraft(),
       loading: false,
       error: "",
     });
@@ -1826,42 +1819,6 @@ function App() {
           <div>
             <p className="eyebrow">{activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>
             <h1>{viewHeadline}</h1>
-            {activeView === "today" && (
-              <div className="topbar-highlights">
-                {upcomingHighlights.busy && (
-                  <button
-                    type="button"
-                    className="topbar-highlight busy"
-                    title={`${upcomingHighlights.busy.title} — 点击跳到 ${formatShortDate(upcomingHighlights.busy.date)}`}
-                    onClick={() => setSelectedDate(upcomingHighlights.busy.date)}
-                  >
-                    <Clock3 size={12} />
-                    {upcomingHighlights.busy.title.length > 12
-                      ? upcomingHighlights.busy.title.slice(0, 12) + "..."
-                      : upcomingHighlights.busy.title}
-                    {" "}{formatShortDate(upcomingHighlights.busy.date)}
-                  </button>
-                )}
-                {upcomingHighlights.week && (
-                  <span className="topbar-highlight week" title={upcomingHighlights.week.title}>
-                    <Target size={12} />
-                    {upcomingHighlights.week.parentTitle
-                      ? (upcomingHighlights.week.parentTitle.length > 8 ? upcomingHighlights.week.parentTitle.slice(0, 8) + "… › " : upcomingHighlights.week.parentTitle + " › ")
-                      : ""}
-                    {upcomingHighlights.week.title}
-                  </span>
-                )}
-                {upcomingHighlights.month && (
-                  <span className="topbar-highlight month" title={upcomingHighlights.month.title}>
-                    <Target size={12} />
-                    {upcomingHighlights.month.parentTitle
-                      ? (upcomingHighlights.month.parentTitle.length > 8 ? upcomingHighlights.month.parentTitle.slice(0, 8) + "… › " : upcomingHighlights.month.parentTitle + " › ")
-                      : ""}
-                    {upcomingHighlights.month.title}
-                  </span>
-                )}
-              </div>
-            )}
           </div>
           <div className="date-switcher">
             <button title="前一天" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
@@ -1934,6 +1891,8 @@ function App() {
             startPlanningCoach={startPlanningCoach}
             sendPlanningCoachMessage={sendPlanningCoachMessage}
             sendPlanningCoachText={sendPlanningCoachText}
+            forwardToCoach={forwardToCoach}
+            onExecCommand={execCommandIntent}
             acceptPlanningCoachSuggestions={acceptPlanningCoachSuggestions}
             showAiFollowUp={showAiFollowUp}
             todayAiReply={todayAiReply}
