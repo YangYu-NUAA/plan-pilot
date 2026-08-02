@@ -1934,6 +1934,7 @@ function App() {
             startPlanningCoach={startPlanningCoach}
             sendPlanningCoachMessage={sendPlanningCoachMessage}
             sendPlanningCoachText={sendPlanningCoachText}
+            onExecCommand={execCommandIntent}
             acceptPlanningCoachSuggestions={acceptPlanningCoachSuggestions}
             showAiFollowUp={showAiFollowUp}
             todayAiReply={todayAiReply}

@@ -3350,3 +3350,78 @@ li,
 .voice-inline-error button:hover { opacity: 1; }
 
 .settings-hint { font-size: 11px; color: #cbd8d3; opacity: 0.85; line-height: 1.5; font-weight: 400; }
+
+/* —— OmniBar 常驻输入栏：首页统一入口 —— */
+.omnibar-wrap {
+  position: relative;
+  width: 100%; max-width: 1560px; margin: 0 auto;
+}
+.omnibar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  padding: 7px 8px 7px 10px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color .15s, box-shadow .15s;
+}
+.omnibar:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.omnibar input {
+  flex: 1; min-width: 0;
+  border: 0; background: transparent; padding: 4px 2px;
+  font-size: 14.5px; color: var(--text);
+  outline: none;
+}
+.omnibar input::placeholder { color: var(--faint); }
+.omnibar .voice-btn { border-radius: var(--radius-pill); }
+.omnibar-ai {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; flex-shrink: 0;
+  border: 0; border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  transition: filter .12s;
+}
+.omnibar-ai:hover { filter: brightness(0.96); }
+.omnibar kbd {
+  font-family: inherit; font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 7px;
+  margin-right: 4px;
+}
+.omnibar-note {
+  position: absolute; top: calc(100% + 6px); right: 18px; z-index: 10;
+  font-size: 12px; color: var(--accent);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 8px;
+  padding: 5px 10px;
+  box-shadow: var(--shadow-sm);
+  animation: fade-in var(--dur-fast) ease-out;
+}
+.omnibar-voice-error { margin-top: 6px; }
+
+/* —— 手动表单收起：表单降级为「高级模式」 —— */
+.manual-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+  margin-bottom: 8px;
+  transition: color .12s;
+}
+.manual-toggle:hover { color: var(--ink); }
+.manual-toggle svg { transition: transform var(--dur-fast) var(--ease-out); }
+.manual-toggle.is-open svg { transform: rotate(45deg); }
+.manual-form-wrap {
+  animation: fade-in-up var(--dur-med) var(--ease-out);
+}

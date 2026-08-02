@@ -8,6 +8,7 @@ import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
+import { OmniBar } from "../components/OmniBar.jsx";
 import { VoiceButton } from "../components/ui/VoiceButton.jsx";
 import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
@@ -66,6 +67,7 @@ export function TodayView({
   startPlanningCoach,
   sendPlanningCoachMessage,
   sendPlanningCoachText,
+  onExecCommand,
   acceptPlanningCoachSuggestions,
   showAiFollowUp,
   todayAiReply,
@@ -134,6 +136,20 @@ export function TodayView({
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
   const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
   const [voiceError, setVoiceError] = useState(""); // 访谈语音识别错误（内联展示）
+  // 手动表单降级为「高级模式」：默认收起，状态存本地（OmniBar 是主输入方式）
+  const [showTaskForm, setShowTaskForm] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-manual-task-form") === "1"; } catch { return false; }
+  });
+  const [showBlockForm, setShowBlockForm] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-manual-block-form") === "1"; } catch { return false; }
+  });
+  function toggleFormStorage(setter, key) {
+    setter((cur) => {
+      const next = !cur;
+      try { localStorage.setItem(key, next ? "1" : "0"); } catch (e) { /* ignore */ }
+      return next;
+    });
+  }
 
   function startEditingBlock(block) {
     setEditingBlockId(block.id);
@@ -220,6 +236,17 @@ export function TodayView({
         ai={ai}
         apiKey={localAiKey}
         serverKeyOk={serverAiKeyLoaded}
+      />
+      <OmniBar
+        onExecute={onExecCommand}
+        onAiChat={sendPlanningCoachText}
+        selectedDate={selectedDate}
+        todayStr={getLocalDate()}
+        voiceEngine={planner.settings.voiceEngine || "stepfun"}
+        voiceApiKey={voiceKey || localAiKey}
+        voiceBaseUrl={planner.settings.voiceAsrBaseUrl || ""}
+        voiceModel={planner.settings.voiceAsrModel || ""}
+        voiceAutoSend={planner.settings.voiceAutoSend !== false}
       />
       <div className="cockpit-grid">
       <section className="coach-band">
@@ -464,6 +491,15 @@ export function TodayView({
             <h2>今天要做什么</h2>
           </div>
         </div>
+        <button
+          type="button"
+          className={`manual-toggle${showTaskForm ? " is-open" : ""}`}
+          onClick={() => toggleFormStorage(setShowTaskForm, "plan-pilot-manual-task-form")}
+        >
+          <Plus size={14} /> {showTaskForm ? "收起手动添加" : "手动添加"}
+        </button>
+        {showTaskForm && (
+        <div className="manual-form-wrap">
         <form className="task-form" onSubmit={addTask}>
           <input
             name="title"
@@ -516,6 +552,8 @@ export function TodayView({
             添加
           </button>
         </form>
+        </div>
+        )}
 
         <div className="task-list" ref={taskListRef}>
           {overdueTasks.length > 0 && (
@@ -841,6 +879,15 @@ export function TodayView({
           </div>
         )}
 
+        <button
+          type="button"
+          className={`manual-toggle${showBlockForm ? " is-open" : ""}`}
+          onClick={() => toggleFormStorage(setShowBlockForm, "plan-pilot-manual-block-form")}
+        >
+          <Plus size={14} /> {showBlockForm ? "收起手动排块" : "手动排块"}
+        </button>
+        {showBlockForm && (
+        <div className="manual-form-wrap">
         <form className="block-form" onSubmit={addManualBlock}>
           <select
             name="type"
@@ -895,6 +942,8 @@ export function TodayView({
             添加
           </button>
         </form>
+        </div>
+        )}
 
         {scheduleQuestions.length > 0 && (
           <div className="schedule-questions">
