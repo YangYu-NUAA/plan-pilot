@@ -3440,3 +3440,26 @@ li,
 .omnibar-status.is-live { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .voice-status { font-size: 12px; color: var(--text-muted); align-self: center; }
 .voice-status.is-live { color: var(--danger); }
+
+/* —— 访谈面板纯对话视图 + 晨间问题收编 —— */
+.coach-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.coach-head-actions .compact-action { min-height: 32px; font-size: 12.5px; padding: 0 12px; }
+.coach-head-actions .manual-toggle { margin-bottom: 0; }
+.coach-summary { margin: 2px 0 0; font-size: 12px; color: var(--faint); }
+
+/* OmniBar 转发后访谈面板轻微闪烁，引导视线 */
+@keyframes coach-flash-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  60% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.interview-panel.coach-flash {
+  animation: coach-flash-ring 0.6s ease-out 2;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.interview-reply-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+  text-align: right;
+}

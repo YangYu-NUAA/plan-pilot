@@ -1374,7 +1374,7 @@ function App() {
     setAiTaskSuggestions([]);
   }
 
-  async function runPlanningCoach(nextMessages) {
+  async function runPlanningCoach(nextMessages, scopeOverride) {
     if (!planner.ai.enabled) {
       setPlanningCoach((coach) => ({
         ...coach,
@@ -1406,7 +1406,7 @@ function App() {
             role: "user",
             content: JSON.stringify({
               today: selectedDate,
-              interviewScope: planningCoach.scope,
+              interviewScope: scopeOverride || planningCoach.scope,
               dayPlan,
               existingGoals: planner.goals.map(({ id, title, type, parentId, status }) => ({ id, title, type, parentId, status })),
               existingTasks: planner.tasks.map(({ title, date, estimateMinutes, priority, status, goalId }) => ({
@@ -1473,12 +1473,34 @@ function App() {
   }
 
   // 显式文本版本：语音自动发送等场景不经过输入框 state
-  function sendPlanningCoachText(text) {
+  function sendPlanningCoachText(text, scopeOverride) {
     const content = String(text || "").trim();
     if (!content || planningCoach.loading) return;
     const nextMessages = planningCoach.messages.concat({ role: "user", content });
     setPlanningCoach((coach) => ({ ...coach, input: "" }));
-    runPlanningCoach(nextMessages);
+    runPlanningCoach(nextMessages, scopeOverride);
+  }
+
+  // OmniBar 转发入口：按文本关键词推断访谈范围（本周/月度/长期），
+  // 仅在首轮（对话为空）切换 scope——进行中的对话绝不被推断打断。
+  function inferCoachScope(text) {
+    const t = String(text || "");
+    if (/长期|今年|一年|年度/.test(t)) return "long";
+    if (/月度|这个月|本月/.test(t)) return "month";
+    if (/本周|这周|下周|一周/.test(t)) return "week";
+    return null;
+  }
+
+  function forwardToCoach(text) {
+    const content = String(text || "").trim();
+    if (!content) return;
+    const inferred = inferCoachScope(content);
+    let scopeOverride = null;
+    if (inferred && planningCoach.messages.length === 0 && inferred !== planningCoach.scope) {
+      scopeOverride = inferred;
+      setPlanningCoach((coach) => ({ ...coach, scope: inferred }));
+    }
+    sendPlanningCoachText(content, scopeOverride);
   }
 
   function acceptPlanningCoachSuggestions() {
@@ -1639,6 +1661,7 @@ function App() {
       messages: [],
       input: "",
       suggestions: [],
+      draft: emptyDraft(),
       loading: false,
       error: "",
     });
@@ -1934,6 +1957,7 @@ function App() {
             startPlanningCoach={startPlanningCoach}
             sendPlanningCoachMessage={sendPlanningCoachMessage}
             sendPlanningCoachText={sendPlanningCoachText}
+            forwardToCoach={forwardToCoach}
             onExecCommand={execCommandIntent}
             acceptPlanningCoachSuggestions={acceptPlanningCoachSuggestions}
             showAiFollowUp={showAiFollowUp}

@@ -9,7 +9,6 @@ import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { OmniBar } from "../components/OmniBar.jsx";
-import { VoiceButton } from "../components/ui/VoiceButton.jsx";
 import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
 import { Metric, MetricRing } from "../components/ui/Metric.jsx";
@@ -65,8 +64,8 @@ export function TodayView({
   planningCoach,
   setPlanningCoach,
   startPlanningCoach,
-  sendPlanningCoachMessage,
   sendPlanningCoachText,
+  forwardToCoach,
   onExecCommand,
   acceptPlanningCoachSuggestions,
   showAiFollowUp,
@@ -134,9 +133,11 @@ export function TodayView({
   }, [timelineZoom]);
   const taskListRef = useRef(null);
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
-  const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
-  const [voiceError, setVoiceError] = useState(""); // 访谈语音识别错误（内联展示）
-  const [interviewVoiceState, setInterviewVoiceState] = useState("idle"); // 访谈语音状态文字
+  const [coachFlash, setCoachFlash] = useState(false); // OmniBar 转发后访谈面板高亮闪烁
+  // 晨间问题默认收起为摘要行（AI 晨间引导是主推路径），手填展开状态存本地
+  const [coachExpanded, setCoachExpanded] = useState(() => {
+    try { return localStorage.getItem("plan-pilot-coach-expanded") === "1"; } catch { return false; }
+  });
   // 手动表单降级为「高级模式」：默认收起，状态存本地（OmniBar 是主输入方式）
   const [showTaskForm, setShowTaskForm] = useState(() => {
     try { return localStorage.getItem("plan-pilot-manual-task-form") === "1"; } catch { return false; }
@@ -240,7 +241,12 @@ export function TodayView({
       />
       <OmniBar
         onExecute={onExecCommand}
-        onAiChat={sendPlanningCoachText}
+        onAiChat={(text) => {
+          forwardToCoach(text);
+          // 转发后访谈面板轻微闪烁，引导视线到对话出现的位置
+          setCoachFlash(true);
+          setTimeout(() => setCoachFlash(false), 1200);
+        }}
         selectedDate={selectedDate}
         todayStr={getLocalDate()}
         voiceEngine={planner.settings.voiceEngine || "stepfun"}
@@ -255,20 +261,46 @@ export function TodayView({
           <div>
             <p className="eyebrow">晨间问题</p>
             <h2 style={{ color: energyColor(dayPlan.energy) }}>{formatHumanDate(selectedDate)}</h2>
+            {!coachExpanded && (
+              <p className="coach-summary">
+                {dayPlan.morningDone ? "已保存" : dayPlan.fixed || dayPlan.topThree || dayPlan.changes ? "有未保存内容" : "未填写"}
+              </p>
+            )}
           </div>
-          <select
-            className="energy-select"
-            value={dayPlan.energy}
-            onChange={(event) => updateDayPlan({ energy: event.target.value })}
-            aria-label="今日精力"
-          >
-            {energyOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <div className="coach-head-actions">
+            <select
+              className="energy-select"
+              value={dayPlan.energy}
+              onChange={(event) => updateDayPlan({ energy: event.target.value })}
+              aria-label="今日精力"
+            >
+              {energyOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="compact-action"
+              onClick={startPlanningCoach}
+              disabled={planningCoach.loading}
+              title="AI 逐轮提问：固定安排、今日重点……直接用上方输入栏（或语音）回答"
+            >
+              <Sparkles size={15} />
+              AI 晨间引导
+            </button>
+            <button
+              type="button"
+              className={`manual-toggle${coachExpanded ? " is-open" : ""}`}
+              onClick={() => toggleFormStorage(setCoachExpanded, "plan-pilot-coach-expanded")}
+            >
+              <Plus size={14} /> {coachExpanded ? "收起" : "手填"}
+            </button>
+          </div>
         </div>
+        {coachExpanded && (
+        <div className="manual-form-wrap">
         <div className="question-grid">
           <label>
             固定安排
@@ -305,6 +337,8 @@ export function TodayView({
             {aiStatus.loading ? "AI 思考中" : "今日建议"}
           </button>
         </div>
+        </div>
+        )}
         {aiStatus.message && <span className={`ai-message ${aiStatus.loading ? "is-loading" : ""}`}>{aiStatus.message}</span>}
         {aiStatus.error && <span className="ai-error">{aiStatus.error}</span>}
         {showAiFollowUp && (
@@ -350,7 +384,7 @@ export function TodayView({
         )}
       </section>
 
-      <section className="panel interview-panel">
+      <section className={`panel interview-panel${coachFlash ? " coach-flash" : ""}`}>
         <div className="section-heading">
           <div>
             <p className="eyebrow">AI 规划访谈</p>
@@ -380,7 +414,13 @@ export function TodayView({
           {planningCoach.messages.length === 0 && planningCoach.suggestions.length === 0 && !planningCoach.loading && (
             <EmptyState
               illustration="chat"
-              text="选好上方范围 → 点「开始访谈」。AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。长期范围会逐个方向引导你列出可能遗忘的目标。"
+              text="在上方输入栏说话或打字即可开始——AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。"
+              action={
+                <button type="button" className="secondary-action empty-state-action" onClick={startPlanningCoach} disabled={planningCoach.loading}>
+                  <Sparkles size={16} />
+                  开始今日规划访谈
+                </button>
+              }
             />
           )}
           {(planningCoach.messages.length > 0 || planningCoach.loading) && (
@@ -407,6 +447,9 @@ export function TodayView({
               </div>
             </div>
           )}
+          {planningCoach.messages.length > 0 && !planningCoach.loading && (
+            <p className="interview-reply-hint">在上方输入栏继续回答 ↗</p>
+          )}
 
           {planningCoach.error && <div className="ai-error block">{planningCoach.error}</div>}
 
@@ -432,54 +475,6 @@ export function TodayView({
             </div>
           )}
         </div>
-
-        <form className="interview-form" onSubmit={sendPlanningCoachMessage}>
-          <textarea
-            value={planningCoach.input}
-            onChange={(event) => setPlanningCoach((coach) => ({ ...coach, input: event.target.value }))}
-            placeholder="回答 AI 的问题，或直接描述：今天/本周/月度/长期想推进什么"
-          />
-          <div className="interview-actions">
-            <VoiceButton
-              engine={planner.settings.voiceEngine || "stepfun"}
-              apiKey={voiceKey || localAiKey}
-              baseUrl={planner.settings.voiceAsrBaseUrl || ""}
-              model={planner.settings.voiceAsrModel || ""}
-              hint="语音输入访谈内容"
-              onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; setVoiceError(""); }}
-              onError={setVoiceError}
-              onStateChange={setInterviewVoiceState}
-              onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
-              onText={(text) => {
-                const full = interviewVoiceBase.current + text;
-                interviewVoiceBase.current = "";
-                // 自动发送：识别完成直接发给 AI；关闭则落输入框待确认
-                if (planner.settings.voiceAutoSend !== false) {
-                  setPlanningCoach((coach) => ({ ...coach, input: "" }));
-                  sendPlanningCoachText(full);
-                } else {
-                  setPlanningCoach((coach) => ({ ...coach, input: full }));
-                }
-              }}
-            />
-            <button className="primary-action" disabled={planningCoach.loading || !planningCoach.input.trim()}>
-              <Send size={18} />
-              发送
-            </button>
-            <button type="button" className="secondary-action" onClick={startPlanningCoach} disabled={planningCoach.loading}>
-              <Sparkles size={18} />
-              {planningCoach.loading ? "AI 思考中" : "开始访谈"}
-            </button>
-            {interviewVoiceState === "recording" && <span className="voice-status is-live">录音中，再点麦克风结束</span>}
-            {interviewVoiceState === "transcribing" && <span className="voice-status">识别中…</span>}
-          </div>
-          {voiceError && (
-            <div className="voice-inline-error" role="alert">
-              {voiceError}
-              <button type="button" aria-label="关闭错误提示" onClick={() => setVoiceError("")}>×</button>
-            </div>
-          )}
-        </form>
       </section>
 
       <section className="stats-row">
