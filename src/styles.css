@@ -357,8 +357,11 @@ textarea {
 }
 
 .nav button,
-.settings-panel input {
+.settings-panel input,
+.settings-panel select {
   width: 100%;
+  min-width: 0; /* grid 子项不收缩时 select 会按内容宽度顶破抽屉 */
+  max-width: 100%;
 }
 
 .nav button {
