@@ -3503,3 +3503,17 @@ li,
   transition: color .12s;
 }
 .tasks-expand-toggle:hover { color: var(--accent); }
+
+/* OmniBar 行内的访谈范围选择器（紧凑） */
+.omnibar-scope {
+  flex-shrink: 0;
+  width: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 3px 8px;
+  height: 28px;
+  cursor: pointer;
+}

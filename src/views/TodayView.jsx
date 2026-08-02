@@ -92,6 +92,7 @@ export function TodayView({
     try { return localStorage.getItem("plan-pilot-tasks-expanded") === "1"; } catch { return false; }
   });
   const TASKS_COLLAPSED_COUNT = 4;
+  const OVERDUE_COLLAPSED_COUNT = 2; // 逾期区默认只露 2 条（避免一堆逾期把列表撑爆）
   const sortedTodayTasks = useMemo(
     () => [...todayTasks].sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]),
     [todayTasks],
@@ -114,6 +115,7 @@ export function TodayView({
       .filter((t) => t.date < realToday && t.status !== "done")
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : priorityOrder[b.priority] - priorityOrder[a.priority]));
   }, [planner.tasks, selectedDate]);
+  const visibleOverdueTasks = tasksExpanded ? overdueTasks : overdueTasks.slice(0, OVERDUE_COLLAPSED_COUNT);
   const [deferringTaskId, setDeferringTaskId] = useState(null);
   const chatScrollRef = useRef(null);
 
@@ -155,6 +157,37 @@ export function TodayView({
   const [coachExpanded, setCoachExpanded] = useState(() => {
     try { return localStorage.getItem("plan-pilot-coach-expanded") === "1"; } catch { return false; }
   });
+  // 对话区默认隐藏：输入/语音/点「开始访谈」才展开；点 × 或「加入计划」后收回原样
+  const [conversationOpen, setConversationOpen] = useState(false);
+  const conversationActive =
+    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
+
+  function changeCoachScope(value) {
+    setPlanningCoach((coach) => ({
+      ...coach,
+      scope: value,
+      messages: [],
+      suggestions: [],
+      draft: emptyDraft(),
+      error: "",
+    }));
+  }
+
+  function closeCoachConversation() {
+    setPlanningCoach((coach) => ({ ...coach, messages: [], suggestions: [], draft: emptyDraft(), error: "", input: "" }));
+    setConversationOpen(false);
+  }
+
+  function handleStartInterview() {
+    setConversationOpen(true);
+    startPlanningCoach();
+  }
+
+  function handleAcceptSuggestions() {
+    acceptPlanningCoachSuggestions();
+    closeCoachConversation();
+  }
+
   // 手动表单降级为「高级模式」：默认收起，状态存本地（OmniBar 是主输入方式）
   const [showTaskForm, setShowTaskForm] = useState(() => {
     try { return localStorage.getItem("plan-pilot-manual-task-form") === "1"; } catch { return false; }
@@ -272,6 +305,9 @@ export function TodayView({
         voiceBaseUrl={planner.settings.voiceAsrBaseUrl || ""}
         voiceModel={planner.settings.voiceAsrModel || ""}
         voiceAutoSend={planner.settings.voiceAutoSend !== false}
+        coachScope={planningCoach.scope}
+        onScopeChange={changeCoachScope}
+        onStartInterview={handleStartInterview}
       />
       <section className="coach-band">
         <div className="coach-copy">
@@ -401,30 +437,16 @@ export function TodayView({
         )}
       </section>
 
+      {conversationActive && (
       <section className={`panel interview-panel${coachFlash ? " coach-flash" : ""}`}>
         <div className="section-heading">
           <div>
             <p className="eyebrow">AI 规划访谈</p>
             <h2>让模型主动问，再帮你拆</h2>
           </div>
-          <select
-            value={planningCoach.scope}
-            onChange={(event) =>
-              setPlanningCoach((coach) => ({
-                ...coach,
-                scope: event.target.value,
-                messages: [],
-                suggestions: [],
-                draft: emptyDraft(),
-                error: "",
-              }))
-            }
-          >
-            <option value="today">今天</option>
-            <option value="week">本周</option>
-            <option value="month">月度</option>
-            <option value="long">长期</option>
-          </select>
+          <button type="button" className="icon-button" title="结束对话并收起" aria-label="结束对话并收起" onClick={closeCoachConversation}>
+            <X size={16} />
+          </button>
         </div>
 
         <div className="interview-body">
@@ -432,12 +454,6 @@ export function TodayView({
             <EmptyState
               illustration="chat"
               text="在上方输入栏说话或打字即可开始——AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。"
-              action={
-                <button type="button" className="secondary-action empty-state-action" onClick={startPlanningCoach} disabled={planningCoach.loading}>
-                  <Sparkles size={16} />
-                  开始今日规划访谈
-                </button>
-              }
             />
           )}
           {(planningCoach.messages.length > 0 || planningCoach.loading) && (
@@ -485,7 +501,7 @@ export function TodayView({
                   </span>
                 </article>
               ))}
-              <button className="primary-action" onClick={acceptPlanningCoachSuggestions}>
+              <button className="primary-action" onClick={handleAcceptSuggestions}>
                 <Plus size={18} />
                 加入计划
               </button>
@@ -493,6 +509,7 @@ export function TodayView({
           )}
         </div>
       </section>
+      )}
       </div>
 
       <div className="cockpit-grid">
@@ -580,7 +597,7 @@ export function TodayView({
                 <Clock3 size={14} />
                 逾期未完成 · {overdueTasks.length}
               </div>
-              {overdueTasks.map((task) => (
+              {visibleOverdueTasks.map((task) => (
                 <article className="overdue-item" key={task.id}>
                   <div className="overdue-main">
                     <strong>{task.title}</strong>
@@ -764,9 +781,9 @@ export function TodayView({
               </article>
             );
             })}
-        {(sortedTodayTasks.length > TASKS_COLLAPSED_COUNT || futureTasks.length > 0) && (
+        {(sortedTodayTasks.length > TASKS_COLLAPSED_COUNT || overdueTasks.length > OVERDUE_COLLAPSED_COUNT || futureTasks.length > 0) && (
           <button type="button" className="tasks-expand-toggle" onClick={toggleTasksExpanded}>
-            {tasksExpanded ? "收起列表" : `展开全部（共 ${sortedTodayTasks.length + futureTasks.length} 条）`}
+            {tasksExpanded ? "收起列表" : `展开全部（共 ${sortedTodayTasks.length + overdueTasks.length + futureTasks.length} 条）`}
           </button>
         )}
         {tasksExpanded && futureTasks.length > 0 && (

@@ -9,6 +9,9 @@ import { VoiceButton } from "./ui/VoiceButton.jsx";
 export function OmniBar({
   onExecute,
   onAiChat,
+  onStartInterview,
+  coachScope = "today",
+  onScopeChange,
   selectedDate,
   todayStr,
   voiceEngine = "stepfun",
@@ -89,14 +92,29 @@ export function OmniBar({
           placeholder="和 AI 说任何事：帮我规划本周 / 明天下午3点有组会（含时间的安排会自动排入时间轴）"
           aria-label="全能输入栏"
         />
+        {onScopeChange && (
+          <select
+            className="omnibar-scope"
+            value={coachScope}
+            onChange={(e) => onScopeChange(e.target.value)}
+            aria-label="访谈范围"
+            title="AI 访谈范围"
+          >
+            <option value="today">今天</option>
+            <option value="week">本周</option>
+            <option value="month">月度</option>
+            <option value="long">长期</option>
+          </select>
+        )}
         <button
           type="button"
           className="omnibar-ai"
-          title="直接交给 AI 访谈处理"
-          aria-label="交给 AI 处理"
+          title={input.trim() ? "交给 AI 访谈处理" : "开始访谈——AI 主动提问引导你规划"}
+          aria-label={input.trim() ? "交给 AI 处理" : "开始访谈"}
           onClick={() => {
             const value = input.trim();
             if (value) forwardToAi(value);
+            else onStartInterview?.();
           }}
         >
           <Sparkles size={15} />
