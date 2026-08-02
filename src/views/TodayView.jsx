@@ -136,6 +136,7 @@ export function TodayView({
   useFlip(taskListRef, [planner.tasks]); // 任务增删 / 改优先级 / 顺延时的 FLIP 平滑重排
   const interviewVoiceBase = useRef(""); // 访谈语音输入的基准文本
   const [voiceError, setVoiceError] = useState(""); // 访谈语音识别错误（内联展示）
+  const [interviewVoiceState, setInterviewVoiceState] = useState("idle"); // 访谈语音状态文字
   // 手动表单降级为「高级模式」：默认收起，状态存本地（OmniBar 是主输入方式）
   const [showTaskForm, setShowTaskForm] = useState(() => {
     try { return localStorage.getItem("plan-pilot-manual-task-form") === "1"; } catch { return false; }
@@ -447,6 +448,7 @@ export function TodayView({
               hint="语音输入访谈内容"
               onStart={() => { interviewVoiceBase.current = planningCoach.input.trim() ? `${planningCoach.input.trim()} ` : ""; setVoiceError(""); }}
               onError={setVoiceError}
+              onStateChange={setInterviewVoiceState}
               onInterim={(text) => setPlanningCoach((coach) => ({ ...coach, input: interviewVoiceBase.current + text }))}
               onText={(text) => {
                 const full = interviewVoiceBase.current + text;
@@ -468,6 +470,8 @@ export function TodayView({
               <Sparkles size={18} />
               {planningCoach.loading ? "AI 思考中" : "开始访谈"}
             </button>
+            {interviewVoiceState === "recording" && <span className="voice-status is-live">录音中，再点麦克风结束</span>}
+            {interviewVoiceState === "transcribing" && <span className="voice-status">识别中…</span>}
           </div>
           {voiceError && (
             <div className="voice-inline-error" role="alert">

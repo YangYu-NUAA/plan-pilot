@@ -20,6 +20,7 @@ export function OmniBar({
   const [input, setInput] = useState("");
   const [note, setNote] = useState(""); // 瞬时反馈（如「已转给 AI 访谈」）
   const [voiceError, setVoiceError] = useState("");
+  const [voiceState, setVoiceState] = useState("idle"); // 录音/识别状态文字提示
   const inputRef = useRef(null);
   const baseRef = useRef(""); // 录音开始时输入框已有内容
   const noteTimer = useRef(null);
@@ -38,21 +39,16 @@ export function OmniBar({
     flashNote("这句交给 AI 访谈处理了 ↘");
   }
 
-  // 统一入口：本地能懂 → 执行；不懂 → 转 AI
+  // 统一入口：只有强结构化指令（含时间/日期的安排、跳日期、命令）直接执行；
+  // 其余一律交给 AI 访谈——OmniBar 替代的是完整访谈的输入入口，
+  // 随手一句话不该不经过对话就变成任务。
   function submit(text) {
     const value = String(text || "").trim();
     if (!value) return;
     const intents = parseCommandInput(value, { selectedDate, todayStr });
-    // 明确信号：时间块 / 跳日期 / 命令类 → 直接执行
     const strong = intents.find((i) => i.kind !== "add-task");
     if (strong) {
       onExecute(strong);
-      setInput("");
-      return;
-    }
-    // 短句按任务处理（「写周报」「回复邮件」）；长句没信号更像对 AI 说的话
-    if (value.length <= 16 && intents.length > 0) {
-      onExecute(intents[0]);
       setInput("");
       return;
     }
@@ -70,6 +66,7 @@ export function OmniBar({
           hint="语音输入"
           onStart={() => { baseRef.current = input.trim() ? `${input.trim()} ` : ""; setVoiceError(""); }}
           onError={setVoiceError}
+          onStateChange={setVoiceState}
           onInterim={(text) => setInput(baseRef.current + text)}
           onText={(text) => {
             const full = baseRef.current + text;
@@ -89,7 +86,7 @@ export function OmniBar({
             if (e.key === "Enter") submit(input);
             else if (e.key === "Escape") setInput("");
           }}
-          placeholder="说话或打字：明天下午3点组会 / 写周报 30分钟 / 周五 …看不懂的自动转给 AI"
+          placeholder="和 AI 说任何事：帮我规划本周 / 明天下午3点有组会（含时间的安排会自动排入时间轴）"
           aria-label="全能输入栏"
         />
         <button
@@ -106,6 +103,8 @@ export function OmniBar({
         </button>
         <kbd>↵</kbd>
       </div>
+      {voiceState === "recording" && <div className="omnibar-status is-live">正在录音——说完再点一次麦克风结束</div>}
+      {voiceState === "transcribing" && <div className="omnibar-status">识别中…</div>}
       {note && <div className="omnibar-note">{note}</div>}
       {voiceError && (
         <div className="voice-inline-error omnibar-voice-error" role="alert">

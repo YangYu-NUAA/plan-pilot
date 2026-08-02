@@ -10,8 +10,12 @@ import {
 
 // 通用语音输入按钮：点一下开始、再点停止；识别文字经 onText 回调（浏览器引擎
 // 另有 onInterim 流式中间结果）。确认缓冲由父组件负责——文字先落输入框，用户过目后再提交。
-export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", model = "", onText, onInterim, onStart, onError, disabled = false, hint = "语音输入" }) {
-  const [state, setState] = useState("idle"); // idle | recording | transcribing | error
+export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", model = "", onText, onInterim, onStart, onError, onStateChange, disabled = false, hint = "语音输入" }) {
+  const [state, setStateRaw] = useState("idle"); // idle | recording | transcribing | error
+  const setState = (next) => { // 同步外抛状态，父组件可展示「录音中/识别中」文字
+    setStateRaw(next);
+    onStateChange?.(next);
+  };
   const [error, setError] = useState("");
   const recorderRef = useRef(null);
   const recognizerRef = useRef(null);
