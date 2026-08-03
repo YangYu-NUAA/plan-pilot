@@ -79,6 +79,12 @@ export function VoiceButton({ engine = "stepfun", apiKey = "", baseUrl = "", mod
       return;
     }
     // 阶跃 ASR：先录后转
+    if (!navigator.mediaDevices?.getUserMedia) {
+      // 局域网 http://IP 访问不是安全上下文，浏览器会禁用麦克风（iOS Safari/Chrome 均如此）
+      flashError("当前环境禁用麦克风：用 localhost 打开，或部署/隧道成 HTTPS 后访问");
+      busyRef.current = false;
+      return;
+    }
     const recorder = createMicRecorder();
     recorderRef.current = recorder;
     try {

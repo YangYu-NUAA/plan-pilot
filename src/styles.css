@@ -3602,3 +3602,21 @@ li,
   .interview-panel .section-heading > div { min-width: 0; }
   .interview-panel .section-heading h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* 移动端时间轴：列 flex 容器在 grid auto 行里会被 circular sizing 压塌，
+   改为普通块布局 + 时间轴固定可视高度（内部滚动） */
+@media (max-width: 1100px) {
+  /* min-height:0 会让 grid 轨道把面板压到 34px（桌面端被右栏高面板掩盖），移动端必须解除 */
+  .cockpit-grid > .schedule-panel { display: block; min-height: unset; }
+  .day-timeline { flex: none; height: 62vh; min-height: 340px; }
+}
+
+@media (max-width: 820px) {
+  /* 晨间条：日期大标题与顶栏重复，移动端隐藏，摘要行更紧凑 */
+  .coach-copy h2 { display: none; }
+  .coach-copy { align-items: center; }
+  /* PiP 悬浮窗是桌面特性，触屏隐藏 */
+}
+@media (hover: none) {
+  .pip-launch { display: none; }
+}
