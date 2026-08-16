@@ -34,6 +34,7 @@ import { playTick } from "./utils/soundFx.js";
 import { useLocalAiKey } from "./hooks/useLocalAiKey.js";
 import { useLocalVoiceKey } from "./hooks/useLocalVoiceKey.js";
 import { hydratePlannerState, usePlannerStore } from "./hooks/usePlannerStore.js";
+import { hasLocalServer } from "./app/platform.js";
 import { uid } from "./utils/ids.js";
 import {
   addDays,
@@ -222,6 +223,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // 原生壳无服务器 Key：状态直接置 false，靠设备本地 Key（BYOK）
+    if (!hasLocalServer) {
+      setServerAiKeyLoaded(false);
+      return undefined;
+    }
     fetch("/api/ai/status")
       .then((r) => r.json())
       .then((s) => setServerAiKeyLoaded(!!s.configured))
@@ -1610,13 +1616,15 @@ function App() {
     }
     setPlanner(hydratePlannerState(defaultState, mergeDuplicateTasks));
     updateLocalAiKey("");
-    // Immediately persist empty state to server to clear disk files
-    fetch("/api/data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(defaultState),
-    }).catch(() => {});
-    fetch("/api/profile", { method: "DELETE" }).catch(() => {});
+    // Immediately persist empty state to server to clear disk files（原生壳跳过）
+    if (hasLocalServer) {
+      fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(defaultState),
+      }).catch(() => {});
+      fetch("/api/profile", { method: "DELETE" }).catch(() => {});
+    }
     setSelectedDate(getLocalDate());
     setTaskDraft({ title: "", estimateMinutes: 60, priority: "medium", goalId: "" });
     setBlockDraft({ type: "task", taskId: "", title: "", start: (defaultState.settings.workSegments[0]?.start || "09:00"), end: "10:00" });
@@ -1695,6 +1703,7 @@ function App() {
   }
 
   async function updateProfileFromReview(review) {
+    if (!hasLocalServer) return; // 画像文件在服务器上，原生壳暂不落盘
     try {
       const profile = await fetch("/api/profile").then((r) => r.json()).catch(() => ({}));
       const result = await callPlanningAi({

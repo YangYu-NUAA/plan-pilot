@@ -1,0 +1,8 @@
+{
+  "appId": "com.planpilot.app",
+  "appName": "Plan Pilot",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

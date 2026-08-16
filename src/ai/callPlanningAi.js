@@ -1,4 +1,6 @@
 import { tryExtractJson, richestJson, isMeaningfulJson } from "../jsonExtract.js";
+import { isNative } from "../app/platform.js";
+import { directChatFetch } from "./directAi.js";
 
 function flattenMessageContent(value) {
   return Array.isArray(value)
@@ -27,9 +29,12 @@ export async function callPlanningAi({
   // 所以 JSON 模式给一个较高的下限，保证「想完还能把 JSON 写出来」。非推理模型用不满，不会涨成本。
   const effectiveMax = json ? Math.max(maxTokens, 5000) : maxTokens;
 
+  // 原生壳：无代理服务器，走原生 HTTP 直连（绕过 WebView CORS）
+  const post = isNative ? directChatFetch : fetchImpl;
+
   // 单次调用：jsonMode=是否启用严格 json_object（弱模型常因此返回空）；extra=追加的纠正消息
   async function once(jsonMode, extra) {
-    const response = await fetchImpl("/api/ai/chat", {
+    const response = await post("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -1,3 +1,5 @@
+import { isNative, CapacitorHttp } from "../app/platform.js";
+
 // 语音输入双引擎：
 //  - "stepfun"：MediaRecorder 录音 → 解码重编码为 16kHz 单声道 WAV →
 //    经 /api/asr 代理转发阶跃 ASR（api.stepfun.com/v1/audio/transcriptions，
@@ -111,6 +113,13 @@ function encodeWav(samples, sampleRate) {
 
 // —— 阶跃 ASR（经本地服务器代理） ——
 export async function transcribeAudio(wavBlob, { apiKey, baseUrl, model } = {}) {
+  // 原生壳：无代理，Step Plan 路径走 SSE JSON 直连（其他路径需桌面/服务器模式）
+  if (isNative) {
+    if (!/step_plan/i.test(String(baseUrl || ""))) {
+      throw new Error("原生直连暂支持 Step Plan 语音识别路径，请在设置里把 ASR 地址填为 https://api.stepfun.com/step_plan/v1");
+    }
+    return transcribeStepPlanDirect(wavBlob, { apiKey, baseUrl, model });
+  }
   const res = await fetch("/api/asr", {
     method: "POST",
     headers: {
@@ -129,6 +138,67 @@ export async function transcribeAudio(wavBlob, { apiKey, baseUrl, model } = {}) 
   const text = String(data.text || "").trim();
   if (!text) throw new Error("没听清，靠近一点再说一次？");
   return text;
+}
+
+// —— 原生直连：Step Plan SSE（JSON + base64 PCM，与服务器代理同一协议） ——
+async function transcribeStepPlanDirect(wavBlob, { apiKey, baseUrl, model } = {}) {
+  const buf = await wavBlob.arrayBuffer();
+  const pcm = buf.byteLength > 44 ? buf.slice(44) : buf; // 剥 WAV 头取 pcm_s16le
+  const base64 = arrayBufferToBase64(pcm);
+  const url = `${String(baseUrl).replace(/\/+$/, "")}/audio/asr/sse`;
+  const response = await CapacitorHttp.post({
+    url,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    data: {
+      audio: {
+        data: base64,
+        input: {
+          transcription: { model: model || "stepaudio-2.5-asr", language: "zh", enable_itn: true },
+          format: { type: "pcm", codec: "pcm_s16le", rate: 16000, bits: 16, channel: 1 },
+        },
+      },
+    },
+    connectTimeout: 30_000,
+    readTimeout: 90_000,
+  });
+  if (response.status < 200 || response.status >= 300) {
+    const msg = response.data?.error?.message || response.data?.message || `语音识别失败（${response.status}）`;
+    throw new Error(typeof msg === "string" ? msg : "语音识别失败");
+  }
+  const raw = typeof response.data === "string" ? response.data : JSON.stringify(response.data || "");
+  let finalText = "";
+  let deltas = "";
+  let errMsg = "";
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const evt = JSON.parse(payload);
+      if (evt.type === "transcript.text.done") finalText = evt.text || finalText;
+      else if (evt.type === "transcript.text.delta") deltas += evt.delta || "";
+      else if (evt.type === "error") errMsg = evt.message || "未知错误";
+    } catch { /* 忽略心跳/注释行 */ }
+  }
+  if (errMsg) throw new Error(`上游 ASR 错误：${errMsg}`);
+  const text = (finalText || deltas).trim();
+  if (!text) throw new Error("没听清，靠近一点再说一次？");
+  return text;
+}
+
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
 }
 
 // —— 浏览器识别引擎：流式中间结果 ——
