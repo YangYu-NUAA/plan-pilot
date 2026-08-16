@@ -15,9 +15,15 @@
 
 ## 构建 APK
 
-需要 JDK 17+ 与 Android SDK（cmdline-tools + platform + build-tools）。
+需要 **JDK 21**（Capacitor 8 硬性要求，JDK 17 会报 `invalid source release: 21`）与 Android SDK（cmdline-tools + platform-36 + build-tools 35/36）。无 Android Studio 的最小命令行路径（本机已验证）：
 
 ```bash
+# 1) Temurin JDK 21 + Google cmdline-tools 解压到 ~/jdk21 与 ~/android-sdk
+# 2) sdkmanager --sdk_root=~/android-sdk --licenses 接受证书，
+#    安装 platforms;android-36 与 build-tools;35.0.0
+export JAVA_HOME=~/jdk21/Contents/Home
+export ANDROID_HOME=~/android-sdk
+
 npm install            # 已含 @capacitor/core / cli / android
 npm run build          # 产出 dist/
 npx cap sync android   # 同步 web 资源与配置到 android/
