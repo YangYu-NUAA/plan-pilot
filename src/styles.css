@@ -3673,3 +3673,96 @@ li,
   .coach-head-actions .manual-toggle { min-height: 40px; }
   .energy-select { min-height: 40px; }
 }
+
+/* —— 「当下」视图：打开即答案 —— */
+.now-wrap {
+  width: 100%; max-width: 640px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 16px;
+  flex: 1; min-height: 0;
+}
+.now-hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+  padding: 34px 26px 26px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  animation: fade-in-up var(--dur-med) var(--ease-out);
+}
+.now-eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+.now-hero.is-idle .now-eyebrow { color: var(--text-muted); }
+.now-title {
+  margin: 0;
+  font-size: clamp(22px, 5.4vw, 30px);
+  font-weight: 650; letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.now-goal { margin: 8px 0 0; font-size: 13px; color: var(--text-muted); }
+.now-time { margin: 10px 0 0; font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.now-count {
+  margin-top: 18px;
+  font-size: clamp(56px, 15vw, 84px);
+  font-weight: 650; letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
+}
+.now-progress {
+  width: 100%; height: 6px; margin-top: 18px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.now-progress i {
+  display: block; height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 1s linear;
+}
+.now-actions { display: flex; gap: 12px; margin-top: 24px; width: 100%; }
+.now-btn {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 56px;
+  border-radius: 14px;
+  font-size: 17px; font-weight: 700;
+  cursor: pointer;
+  border: 0;
+  transition: filter .12s, transform .1s;
+}
+.now-btn:active { transform: scale(0.97); }
+.now-btn.primary { background: var(--accent); color: #fff; }
+.now-btn.primary:hover { filter: brightness(1.05); }
+.now-btn.secondary { background: var(--accent-soft); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.now-day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  padding: 14px 18px;
+}
+.now-day-head { display: flex; align-items: center; gap: 10px; }
+.now-day-label { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.now-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.now-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 2px;
+  border-top: 1px solid var(--hair);
+  font-size: 14px;
+}
+.now-list-time { color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.now-list-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-list li.is-current .now-list-title { font-weight: 700; color: var(--accent); }
+.now-list-live {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 11px; font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { playTick } from "../utils/soundFx.js";
+import { tapDone } from "../utils/hapticsFx.js";
 import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
 import { parseTimeInSentence } from "../planner/textExtract.js";
 import { findSlotForTask } from "../planner/scheduling.js";
@@ -763,7 +764,7 @@ export function TodayView({
                   onClick={() => {
                     const marking = task.status !== "done";
                     updateTask(task.id, { status: marking ? "done" : "open" });
-                    if (marking) playTick(planner.settings);
+                    if (marking) { playTick(planner.settings); tapDone(); }
                   }}
                 >
                   {task.status === "done" ? <CheckSquare size={20} /> : <Square size={20} />}
@@ -1093,7 +1094,7 @@ export function TodayView({
             if (t) {
               const marking = t.status !== "done";
               updateTask(t.id, { status: marking ? "done" : "open" });
-              if (marking) playTick(planner.settings);
+              if (marking) { playTick(planner.settings); tapDone(); }
             }
           }}
           onStartFocus={onStartFocus}
@@ -1126,7 +1127,7 @@ export function TodayView({
                 if (t) {
                   const marking = t.status !== "done";
                   updateTask(t.id, { status: marking ? "done" : "open" });
-                  if (marking) playTick(planner.settings);
+                  if (marking) { playTick(planner.settings); tapDone(); }
                 }
               }}
               onStartFocus={onStartFocus}

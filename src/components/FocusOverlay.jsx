@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, X } from "lucide-react";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 import { toMinutes } from "../utils/dateTime.js";
+import { isNative } from "../app/platform.js";
+import { tapSuccess } from "../utils/hapticsFx.js";
 
 // 专注模式：点任务块/任务上的 ▶ 进入。全屏覆盖层，大倒计时圆环，
 // 完成即把任务标为 done 并退出。纯本地 state，不引入新数据结构。
@@ -12,6 +15,13 @@ export function FocusOverlay({ task, block, goalTitle, onComplete, onExtend, onE
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // 原生壳：专注期间屏幕常亮，退出恢复
+  useEffect(() => {
+    if (!isNative) return undefined;
+    KeepAwake.keepAwake().catch(() => {});
+    return () => { KeepAwake.allowSleep().catch(() => {}); };
   }, []);
 
   // Esc 退出
@@ -70,7 +80,7 @@ export function FocusOverlay({ task, block, goalTitle, onComplete, onExtend, onE
         </div>
 
         <div className="focus-actions">
-          <button type="button" className="focus-done" onClick={onComplete}>
+          <button type="button" className="focus-done" onClick={() => { tapSuccess(); onComplete(); }}>
             <Check size={20} />
             完成
           </button>
