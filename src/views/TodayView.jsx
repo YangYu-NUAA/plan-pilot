@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
+import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { playTick } from "../utils/soundFx.js";
 import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
@@ -159,6 +159,8 @@ export function TodayView({
   });
   // 对话区默认隐藏：输入/语音/点「开始访谈」才展开；点 × 或「加入计划」后收回原样
   const [conversationOpen, setConversationOpen] = useState(false);
+  // 移动端分页：规划（中枢+统计+任务）/ 时间表（独占全屏时间轴）；桌面端始终同屏
+  const [mobileTab, setMobileTab] = useState("plan");
   const conversationActive =
     planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
 
@@ -280,7 +282,29 @@ export function TodayView({
   }
 
   return (
-    <div className="today-wrap">
+    <div className="today-wrap" data-mobile-tab={mobileTab}>
+      <div className="mobile-tabbar" role="tablist" aria-label="今日视图分页">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === "plan"}
+          className={mobileTab === "plan" ? "active" : ""}
+          onClick={() => setMobileTab("plan")}
+        >
+          <Sparkles size={15} />
+          规划
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === "schedule"}
+          className={mobileTab === "schedule" ? "active" : ""}
+          onClick={() => setMobileTab("schedule")}
+        >
+          <CalendarClock size={15} />
+          时间表
+        </button>
+      </div>
       <GreetingCard
         planner={planner}
         todayTasks={todayTasks}
