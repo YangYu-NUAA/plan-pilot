@@ -786,23 +786,25 @@ export function TodayView({
                     )}
                   </span>
                 </div>
-                {onStartFocus && (() => {
-                  const focusableBlock = todayBlocks.find((b) => b.taskId === task.id && b.type !== "busy");
-                  return focusableBlock && task.status !== "done" ? (
-                    <button title="进入专注模式" className="icon-button focus-entry" onClick={() => onStartFocus(focusableBlock.id)}>
-                      <Play size={17} />
-                    </button>
-                  ) : null;
-                })()}
-                <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
-                  <Pencil size={17} />
-                </button>
-                <button title="顺延到明天" className="icon-button" onClick={() => deferTask(task.id)}>
-                  <SkipForward size={17} />
-                </button>
-                <button title="删除任务" className="icon-button danger" onClick={() => deleteTask(task.id)}>
-                  <Trash2 size={17} />
-                </button>
+                <div className="task-actions">
+                  {onStartFocus && (() => {
+                    const focusableBlock = todayBlocks.find((b) => b.taskId === task.id && b.type !== "busy");
+                    return focusableBlock && task.status !== "done" ? (
+                      <button title="进入专注模式" className="icon-button focus-entry" onClick={() => onStartFocus(focusableBlock.id)}>
+                        <Play size={17} />
+                      </button>
+                    ) : null;
+                  })()}
+                  <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
+                    <Pencil size={17} />
+                  </button>
+                  <button title="顺延到明天" className="icon-button" onClick={() => deferTask(task.id)}>
+                    <SkipForward size={17} />
+                  </button>
+                  <button title="删除任务" className="icon-button danger" onClick={() => deleteTask(task.id)}>
+                    <Trash2 size={17} />
+                  </button>
+                </div>
               </article>
             );
             })}
