@@ -2908,8 +2908,12 @@ html[data-theme="night"] {
 .gantt-bar-pct { position: relative; padding: 0 7px; font-size: 10.5px; font-weight: 700; color: var(--accent); white-space: nowrap; }
 
 @media (max-width: 720px) {
-  .gantt-axis, .gantt-row { grid-template-columns: 160px minmax(0, 1fr); }
+  /* 移动端：图表固定宽度 + 横向滑动，不再把左栏和横条压扁 */
+  .gantt { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .gantt-axis, .gantt-row { grid-template-columns: 200px 480px; }
   .gantt-meta { max-width: 64px; }
+  .gantt-label .icon-button { width: 34px; height: 34px; } /* 触控目标 */
+  .gantt-tick:nth-child(even) { display: none; } /* 刻度抽稀：隔周显示，不再挤叠 */
 }
 
 .empty-state-action {
