@@ -7,6 +7,7 @@ import {
   ListChecks,
   Settings,
   Target,
+  Zap,
 } from "lucide-react";
 import {
   planningCoachStartMessage,
@@ -31,9 +32,11 @@ import { CommandBar } from "./components/CommandBar.jsx";
 import { WelcomeCard } from "./components/WelcomeCard.jsx";
 import { THEMES } from "./utils/commandParse.js";
 import { playTick } from "./utils/soundFx.js";
+import { tapDone } from "./utils/hapticsFx.js";
 import { useLocalAiKey } from "./hooks/useLocalAiKey.js";
 import { useLocalVoiceKey } from "./hooks/useLocalVoiceKey.js";
 import { hydratePlannerState, usePlannerStore } from "./hooks/usePlannerStore.js";
+import { hasLocalServer } from "./app/platform.js";
 import { uid } from "./utils/ids.js";
 import {
   addDays,
@@ -91,6 +94,7 @@ import {
   filterTaskSuggestions,
 } from "./planner/coachItems.js";
 import { TodayView } from "./views/TodayView.jsx";
+import { NowView } from "./views/NowView.jsx";
 import { GoalsView } from "./views/GoalsView.jsx";
 import { ReviewView } from "./views/ReviewView.jsx";
 import { SettingsDrawer } from "./components/SettingsDrawer.jsx";
@@ -222,6 +226,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // 原生壳无服务器 Key：状态直接置 false，靠设备本地 Key（BYOK）
+    if (!hasLocalServer) {
+      setServerAiKeyLoaded(false);
+      return undefined;
+    }
     fetch("/api/ai/status")
       .then((r) => r.json())
       .then((s) => setServerAiKeyLoaded(!!s.configured))
@@ -270,11 +279,13 @@ function App() {
   const showAiFollowUp = todayGuideActive && !aiStatus.loading;
 
   const viewHeadline =
-    activeView === "today"
-      ? formatHumanDate(selectedDate)
-      : activeView === "goals"
-        ? "先选个目标，拆成更小的下一步。"
-        : "今天做得如何？明天要做什么？";
+    activeView === "now"
+      ? "当下"
+      : activeView === "today"
+        ? formatHumanDate(selectedDate)
+        : activeView === "goals"
+          ? "先选个目标，拆成更小的下一步。"
+          : "今天做得如何？明天要做什么？";
   const currentAiPreset = getAiProviderPreset(planner.ai.provider);
   const aiKeyLoaded = Boolean(localAiKey.trim() || serverAiKeyLoaded);
 
@@ -1610,13 +1621,15 @@ function App() {
     }
     setPlanner(hydratePlannerState(defaultState, mergeDuplicateTasks));
     updateLocalAiKey("");
-    // Immediately persist empty state to server to clear disk files
-    fetch("/api/data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(defaultState),
-    }).catch(() => {});
-    fetch("/api/profile", { method: "DELETE" }).catch(() => {});
+    // Immediately persist empty state to server to clear disk files（原生壳跳过）
+    if (hasLocalServer) {
+      fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(defaultState),
+      }).catch(() => {});
+      fetch("/api/profile", { method: "DELETE" }).catch(() => {});
+    }
     setSelectedDate(getLocalDate());
     setTaskDraft({ title: "", estimateMinutes: 60, priority: "medium", goalId: "" });
     setBlockDraft({ type: "task", taskId: "", title: "", start: (defaultState.settings.workSegments[0]?.start || "09:00"), end: "10:00" });
@@ -1695,6 +1708,7 @@ function App() {
   }
 
   async function updateProfileFromReview(review) {
+    if (!hasLocalServer) return; // 画像文件在服务器上，原生壳暂不落盘
     try {
       const profile = await fetch("/api/profile").then((r) => r.json()).catch(() => ({}));
       const result = await callPlanningAi({
@@ -1757,6 +1771,9 @@ function App() {
           <BrandMark size={20} />
         </span>
         <nav className="rail-nav">
+          <button className={activeView === "now" ? "active" : ""} data-tip="当下" aria-label="当下" onClick={() => setActiveView("now")}>
+            <Zap size={20} />
+          </button>
           <button className={activeView === "today" ? "active" : ""} data-tip="今日" aria-label="今日" onClick={() => setActiveView("today")}>
             <CalendarDays size={20} />
           </button>
@@ -1817,7 +1834,7 @@ function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>
+            <p className="eyebrow">{activeView === "now" ? "现在该做什么" : activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>
             <h1>{viewHeadline}</h1>
           </div>
           <div className="date-switcher">
@@ -1839,6 +1856,25 @@ function App() {
         <ErrorBoundary>
         {/* key=activeView 让切换视图时容器重挂载，从而触发 .view-enter 入场动画 */}
         <div key={activeView} className="view-enter">
+        {activeView === "now" && (
+          <NowView
+            planner={planner}
+            taskById={taskById}
+            goalById={goalById}
+            onToggleTask={(taskId) => {
+              const task = taskById[taskId];
+              if (!task) return;
+              const marking = task.status !== "done";
+              updateTask(taskId, { status: marking ? "done" : "open" });
+              if (marking) {
+                playTick(planner.settings);
+                tapDone();
+              }
+            }}
+            onStartFocus={startFocus}
+            onGoToday={() => setActiveView("today")}
+          />
+        )}
         {activeView === "today" && (
           <TodayView
             planner={planner}

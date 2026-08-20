@@ -33,7 +33,27 @@
 </p>
 </details>
 
+## Android 版（原生壳）
+
+项目内置 Capacitor Android 壳：数据只存手机本机，AI 对话与语音识别经原生 HTTP 直连供应商（绕过 WebView CORS），**不需要任何后端服务器**。
+
+**直接安装**：在 Releases 或自行构建拿到 APK → 手机允许「安装未知来源」→ 安装。覆盖安装升级不清数据（只有主动卸载才会清）。
+
+**首次使用**：
+1. 设置（齿轮）→ 服务商选「阶跃星辰」，填聊天 API Key（只存在手机 localStorage）
+2. 语音 ASR Key 填同一把；ASR 地址：Step Plan 套餐填 `https://api.stepfun.com/step_plan/v1`，非套餐填 `https://api.stepfun.com`
+3. 首次点麦克风，系统弹权限允许即可
+
+**自行构建**：见 [docs/android.md](docs/android.md)（JDK 21 + Android SDK 命令行路径，无需 Android Studio）。
+
+**移动端专属体验**：底部导航、「当下」视图（打开即答「现在该做什么」：大字号当前块 + 秒级倒计时 + 完成/专注大按钮）、今日页「规划 / 时间表」分页、打卡震动反馈、专注模式屏幕常亮、甘特图横滑。
+
 ## 版本更新
+
+### 2026-08-20
+
+- Android 原生壳（Capacitor 8）：零后端运行——数据纯 localStorage，AI 对话与语音（Step Plan SSE）经原生 HTTP 直连供应商、绕过 WebView CORS，Key 只存手机本机；应用图标（罗盘品牌标）、RECORD_AUDIO 权限链路完整。新增「当下」视图（底部导航首位）：打开即答「现在该做什么」——大字号当前块、秒级倒计时、完成/专注大按钮、今日进程环。keep-awake（专注常亮）/ haptics（打卡震动）/ keyboard（输入框随键盘）三插件接入。
+- 移动端布局体系：≤820px 左侧轨变底部 tab bar（safe-area）；今日页「规划 / 时间表」分页，时间轴独占全屏；语音输入区放大（46px 麦克风、16px 字号防 iOS 缩放）；触控目标全面提升；触屏设备时间轴操作按钮常驻可见；甘特图横滑 + 刻度抽稀；任务行按钮组窄屏换行。修复 schedule-panel 被 grid `min-height:0` 压成细条、flex 滚动容器底部 padding 失效两处隐藏 bug。
 
 ### 2026-08-02
 

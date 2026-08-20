@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
+import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { playTick } from "../utils/soundFx.js";
+import { tapDone } from "../utils/hapticsFx.js";
 import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
 import { parseTimeInSentence } from "../planner/textExtract.js";
 import { findSlotForTask } from "../planner/scheduling.js";
@@ -159,6 +160,8 @@ export function TodayView({
   });
   // 对话区默认隐藏：输入/语音/点「开始访谈」才展开；点 × 或「加入计划」后收回原样
   const [conversationOpen, setConversationOpen] = useState(false);
+  // 移动端分页：规划（中枢+统计+任务）/ 时间表（独占全屏时间轴）；桌面端始终同屏
+  const [mobileTab, setMobileTab] = useState("plan");
   const conversationActive =
     planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
 
@@ -280,7 +283,29 @@ export function TodayView({
   }
 
   return (
-    <div className="today-wrap">
+    <div className="today-wrap" data-mobile-tab={mobileTab}>
+      <div className="mobile-tabbar" role="tablist" aria-label="今日视图分页">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === "plan"}
+          className={mobileTab === "plan" ? "active" : ""}
+          onClick={() => setMobileTab("plan")}
+        >
+          <Sparkles size={15} />
+          规划
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === "schedule"}
+          className={mobileTab === "schedule" ? "active" : ""}
+          onClick={() => setMobileTab("schedule")}
+        >
+          <CalendarClock size={15} />
+          时间表
+        </button>
+      </div>
       <GreetingCard
         planner={planner}
         todayTasks={todayTasks}
@@ -739,7 +764,7 @@ export function TodayView({
                   onClick={() => {
                     const marking = task.status !== "done";
                     updateTask(task.id, { status: marking ? "done" : "open" });
-                    if (marking) playTick(planner.settings);
+                    if (marking) { playTick(planner.settings); tapDone(); }
                   }}
                 >
                   {task.status === "done" ? <CheckSquare size={20} /> : <Square size={20} />}
@@ -761,23 +786,25 @@ export function TodayView({
                     )}
                   </span>
                 </div>
-                {onStartFocus && (() => {
-                  const focusableBlock = todayBlocks.find((b) => b.taskId === task.id && b.type !== "busy");
-                  return focusableBlock && task.status !== "done" ? (
-                    <button title="进入专注模式" className="icon-button focus-entry" onClick={() => onStartFocus(focusableBlock.id)}>
-                      <Play size={17} />
-                    </button>
-                  ) : null;
-                })()}
-                <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
-                  <Pencil size={17} />
-                </button>
-                <button title="顺延到明天" className="icon-button" onClick={() => deferTask(task.id)}>
-                  <SkipForward size={17} />
-                </button>
-                <button title="删除任务" className="icon-button danger" onClick={() => deleteTask(task.id)}>
-                  <Trash2 size={17} />
-                </button>
+                <div className="task-actions">
+                  {onStartFocus && (() => {
+                    const focusableBlock = todayBlocks.find((b) => b.taskId === task.id && b.type !== "busy");
+                    return focusableBlock && task.status !== "done" ? (
+                      <button title="进入专注模式" className="icon-button focus-entry" onClick={() => onStartFocus(focusableBlock.id)}>
+                        <Play size={17} />
+                      </button>
+                    ) : null;
+                  })()}
+                  <button title="编辑任务" className="icon-button" onClick={() => startEditingTask(task)}>
+                    <Pencil size={17} />
+                  </button>
+                  <button title="顺延到明天" className="icon-button" onClick={() => deferTask(task.id)}>
+                    <SkipForward size={17} />
+                  </button>
+                  <button title="删除任务" className="icon-button danger" onClick={() => deleteTask(task.id)}>
+                    <Trash2 size={17} />
+                  </button>
+                </div>
               </article>
             );
             })}
@@ -1069,7 +1096,7 @@ export function TodayView({
             if (t) {
               const marking = t.status !== "done";
               updateTask(t.id, { status: marking ? "done" : "open" });
-              if (marking) playTick(planner.settings);
+              if (marking) { playTick(planner.settings); tapDone(); }
             }
           }}
           onStartFocus={onStartFocus}
@@ -1102,7 +1129,7 @@ export function TodayView({
                 if (t) {
                   const marking = t.status !== "done";
                   updateTask(t.id, { status: marking ? "done" : "open" });
-                  if (marking) playTick(planner.settings);
+                  if (marking) { playTick(planner.settings); tapDone(); }
                 }
               }}
               onStartFocus={onStartFocus}
