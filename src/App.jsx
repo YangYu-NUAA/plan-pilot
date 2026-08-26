@@ -575,6 +575,14 @@ function App() {
     try {
       // 全程「先算后用、确认才落盘」：在当前状态副本上计算，不直接改时间轴；结果存入 schedulePreview，等用户确认。
       const snapshot = { tasks: planner.tasks, blocks: planner.blocks };
+      const nowDate = getLocalDate();
+      const isTodayScheduling = nowDate === selectedDate;
+      const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      const scheduleNow = toTime(nowMinutes);
+      const notBefore = isTodayScheduling ? nowMinutes : null;
+      const scheduleConstraintNote = isTodayScheduling
+        ? `\n\n<<< NO PAST SCHEDULING >>>\nToday is ${selectedDate}; the current time is ${scheduleNow}. You MUST NOT schedule any block before ${scheduleNow} — every block must start at or after ${scheduleNow}. If a fixed-time task's scheduled time has already passed, return it as a question to confirm deferral, and do NOT output a block for it.<<< END NO PAST SCHEDULING >>>`
+        : "";
       const committed = computeFixedPlanCommit(planner.tasks, planner.blocks);
       const prepared = preparePlannerForScheduling({
       tasks: committed.tasks,
@@ -592,6 +600,7 @@ function App() {
         existingBlocks: prepared.blocks,
         settings: planner.settings,
         selectedDate,
+        notBefore,
       });
       const polished = polishAiBlocks(result.blocks, planner.settings.workSegments).filter((b) => !b._drop);
       return {
@@ -632,10 +641,14 @@ function App() {
             content:
               `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. If a large task (≥120 min) cannot fit in a single free interval, consider splitting it across two sessions (e.g. morning + afternoon). Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message. If there are simply no tasks to place today, just return empty blocks with a brief note — do NOT generate questions asking the user to add todos.`,
           },
+          ...(isTodayScheduling
+            ? [{ role: "system", content: scheduleConstraintNote }]
+            : []),
           {
             role: "user",
             content: JSON.stringify({
               date: selectedDate,
+              now: scheduleNow,
               startOfDay: (planner.settings.workSegments && planner.settings.workSegments[0] && planner.settings.workSegments[0].start) || "09:00",
               endOfDay: (planner.settings.workSegments && planner.settings.workSegments[planner.settings.workSegments.length - 1] && planner.settings.workSegments[planner.settings.workSegments.length - 1].end) || "18:00",
               workSegments,
@@ -670,6 +683,7 @@ function App() {
         existingBlocks: prepared.blocks,
         settings: planner.settings,
         selectedDate,
+        notBefore,
       });
       const polished = polishAiBlocks(schedule.blocks, planner.settings.workSegments).filter((b) => !b._drop);
       setSchedulePreview({
