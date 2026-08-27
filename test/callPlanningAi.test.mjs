@@ -142,6 +142,42 @@ test("三次都 finish_reason=length：抛错告知已重试", async () => {
   assert.equal(calls, 3, "应跑满 3 次");
 });
 
+test("fetch 网络层失败（Failed to fetch）：抛出明确中文提示且不重试", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    throw new TypeError("Failed to fetch");
+  };
+
+  await assert.rejects(
+    callPlanningAi({
+      ai: baseAi,
+      apiKey: "test-key",
+      messages: [{ role: "user", content: "hi" }],
+      fetchImpl,
+    }),
+    /本地 API 代理不可达/,
+  );
+  assert.equal(calls, 1, "网络层不可达重试无意义，应只尝试一次");
+});
+
+test("非 JSON 模式 fetch 网络层失败：同样抛出明确中文提示", async () => {
+  const fetchImpl = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+
+  await assert.rejects(
+    callPlanningAi({
+      ai: baseAi,
+      apiKey: "test-key",
+      messages: [{ role: "user", content: "hi" }],
+      json: false,
+      fetchImpl,
+    }),
+    /本地 API 代理不可达/,
+  );
+});
+
 test("deepseek 服务商：自动追加 thinking=disabled（避免 reasoning 干扰 JSON）", async () => {
   let sentBody = null;
   const fetchImpl = async (url, init) => {

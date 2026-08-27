@@ -3803,3 +3803,19 @@ li,
      导致底部留白落在溢出内容「上面」；移动端改为随内容自然生长 */
   .view-enter { flex: none; }
 }
+
+/* 文件同步不可用的警告条（AI 诊断化配套）：可关闭、不影响布局 */
+.sync-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger-ink);
+}
+
