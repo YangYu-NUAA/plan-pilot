@@ -30,7 +30,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node scripts/e2e-timeline-autoscroll.mjs"
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.1",

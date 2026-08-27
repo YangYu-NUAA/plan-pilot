@@ -4,6 +4,7 @@ import { getLocalDate, toMinutes, toTime } from "../../utils/dateTime.js";
 import { isMeetingSentence } from "../../planningSemantics.js";
 import { estimateMinutesForTitle } from "../../planner/textExtract.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
+import { edgeScrollSpeed, clampScroll, findScrollableAncestor } from "./autoScroll.js";
 
 export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus, dragTask, fitAll = false }) {
   const PXH_STD = 56; // 标准密度：每小时像素
@@ -24,10 +25,77 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
     return () => ro.disconnect();
   }, [fitAll]);
 
+  // —— 拖拽自动跟随滚动 ——
+  // 场景：页面滚到底部拖外部任务时看不到时间轴；或拖到时间轴内想落的时段不在可视区。
+  // 行为：拖拽期间指针贴近视口/画布上下边缘就匀速平移——
+  //   在时间轴矩形内 → 平移内部 scrollTop 露出更早/更晚时段；
+  //   在矩形外（时间轴被卷走）→ 滚动最近的可滚祖先把时间轴带回视野。
+  // 纯数值计算都在 ./autoScroll.js（可单测），这里只做 DOM 应用与生命周期。
+  const scrollAnim = useRef({ rafId: 0, lastTs: 0, pointerY: null, scrollAnchor: null });
+  const ptrDragActive = useRef(false); // 内部块正在被 pointer 拖拽（移动/缩放）
+  const htmlDragActive = useRef(false); // 外部任务卡 HTML5 拖拽进行中
+
+  function tick(ts) {
+    const st = scrollAnim.current;
+    st.rafId = 0;
+    if (!(ptrDragActive.current || htmlDragActive.current) || st.pointerY == null) return;
+    const el = rootRef.current;
+    if (!el) return;
+    const dt = Math.min(100, ts - (st.lastTs || ts)); // 切页回来不跳变
+    st.lastTs = ts;
+    const y = st.pointerY;
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const visibleH = Math.min(rect.bottom, vh) - Math.max(rect.top, 0);
+    // 只有时间轴“足够可见”才走内部平移；否则（如刚从页底被拉出、只露一条细缝时）
+    // 继续页面级滚动把整块带出来，避免在看不见的内部内容上空转卡住。
+    const visibleEnough = visibleH >= Math.min(rect.height * 0.5, 180);
+
+    if (y >= rect.top && y <= rect.bottom && visibleEnough) {
+      const speed = edgeScrollSpeed(y, rect.top, rect.bottom);
+      if (speed !== 0) applyNodeScroll(el, (speed * dt) / 1000);
+    } else {
+      const anc = findScrollableAncestor(el.parentElement);
+      if (anc) {
+        const ancRect = anc.getBoundingClientRect();
+        const speed = edgeScrollSpeed(y, ancRect.top, ancRect.bottom);
+        if (speed !== 0) applyNodeScroll(anc, (speed * dt) / 1000);
+      }
+    }
+    st.rafId = requestAnimationFrame(tick);
+  }
+  function ensureLoop() {
+    const st = scrollAnim.current;
+    if (!st.rafId) {
+      st.lastTs = 0; // 下一帧从 dt=0 起算
+      st.rafId = requestAnimationFrame(tick);
+    }
+  }
+  function stopLoop() {
+    const st = scrollAnim.current;
+    if (st.rafId) cancelAnimationFrame(st.rafId);
+    st.rafId = 0;
+    st.pointerY = null;
+    st.scrollAnchor = null;
+  }
+  function applyNodeScroll(node, deltaPx) {
+    const max = node.scrollHeight - node.clientHeight;
+    const before = node.scrollTop;
+    const next = clampScroll(before, deltaPx, max);
+    if (next !== before) node.scrollTop = next;
+  }
+
   useEffect(() => {
     if (!drag) return undefined;
     function onMove(e) {
-      const deltaMin = Math.round((e.clientY - drag.startY) / ppm / 5) * 5; // 吸附 5 分钟
+      scrollAnim.current.pointerY = e.clientY;
+      ensureLoop();
+      // 自动平移画布后，块与指针的相对位置由 scrollTop 增量补偿，保持「抓取点在指下」且分钟换算一致
+      const panPx =
+        scrollAnim.current.scrollAnchor != null && rootRef.current
+          ? rootRef.current.scrollTop - scrollAnim.current.scrollAnchor
+          : 0;
+      const deltaMin = Math.round((e.clientY - drag.startY + panPx) / ppm / 5) * 5; // 吸附 5 分钟
       setDrag((d) => (d ? { ...d, deltaMin } : d));
     }
     function onUp() {
@@ -42,10 +110,14 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
         }
         return null;
       });
+      ptrDragActive.current = false;
+      stopLoop();
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     return () => {
+      ptrDragActive.current = false;
+      stopLoop();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -68,6 +140,40 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
             : 8 * 60;
     el.scrollTop = Math.max(0, (focusMin - 60) * ppm);
   }, [selectedDate, fitAll]);
+
+  // 外部任务卡 HTML5 拖拽生命周期跟踪（window 级）：只认本应用任务卡发起的拖拽；
+  // dragover 持续喂入指针位置驱动自动滚动探测，drop/dragend 兜底收尾（浏览器取消、Esc、丢出窗口都会触发）。
+  useEffect(() => {
+    function onDragStart(e) {
+      const t = e.target;
+      if (t instanceof Element && t.closest(".task-item.is-draggable")) {
+        htmlDragActive.current = true;
+        scrollAnim.current.pointerY = typeof e.clientY === "number" ? e.clientY : null;
+        ensureLoop();
+      }
+    }
+    function onWindowDragOver(e) {
+      if (!htmlDragActive.current) return;
+      scrollAnim.current.pointerY = e.clientY;
+      ensureLoop();
+    }
+    function finishHtmlDrag() {
+      htmlDragActive.current = false;
+      stopLoop();
+    }
+    window.addEventListener("dragstart", onDragStart);
+    window.addEventListener("dragover", onWindowDragOver);
+    window.addEventListener("drop", finishHtmlDrag);
+    window.addEventListener("dragend", finishHtmlDrag);
+    return () => {
+      finishHtmlDrag();
+      window.removeEventListener("dragstart", onDragStart);
+      window.removeEventListener("dragover", onWindowDragOver);
+      window.removeEventListener("drop", finishHtmlDrag);
+      window.removeEventListener("dragend", finishHtmlDrag);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!hasContent) {
     return <EmptyState illustration="calendar" text="还没有时间块。先在设置里配置工作时段，或在上面加任务后点自动安排。" />;
@@ -119,6 +225,11 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
   function startDrag(e, block, mode) {
     if (e.button !== undefined && e.button !== 0) return;
     e.preventDefault();
+    ptrDragActive.current = true;
+    scrollAnim.current.pointerY = e.clientY;
+    // 锚定起始 scrollTop：之后的增量即「自动平移量」，折算进 deltaMin 保持分钟换算一致
+    scrollAnim.current.scrollAnchor = rootRef.current ? rootRef.current.scrollTop : null;
+    ensureLoop();
     setDrag({ id: block.id, mode, startY: e.clientY, origStart: toMinutes(block.start), origEnd: toMinutes(block.end), deltaMin: 0 });
   }
 
