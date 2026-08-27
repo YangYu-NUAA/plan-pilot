@@ -133,7 +133,9 @@ try {
   // ========== 场景 A：窄视口（单列布局，时间轴下方还有访谈/统计等长内容）。页面拉到底、
   // 拖拽中指针钉在视口顶边 → 页面自动上滚把时间轴带回来。==========
   {
-    const ctxA = await makeSeedContext(browser, 620, 700); // 宽度 <1180px 触发单列断点
+    // 宽度取 1000：<1180px 走单列断点（时间轴下方有长内容），且避开 ≤820px 的
+    // 移动分页断点——那里默认停留在「规划」标签、schedule-panel 整体 display:none。
+    const ctxA = await makeSeedContext(browser, 800, 1000); // 参数序为 (H, W)
     const { page, pageErrors } = await openPage(ctxA);
     pageErrorsAll = pageErrors.concat(pageErrorsAll);
 
