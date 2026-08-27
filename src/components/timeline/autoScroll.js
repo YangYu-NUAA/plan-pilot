@@ -4,7 +4,7 @@
 // 输入输出都是无副作用的纯数值，DOM 操作由组件层负责——本文件保持可被 node:test 覆盖。
 
 export const AUTO_SCROLL_DEFAULTS = Object.freeze({
-  edgeZone: 64, // 距边缘多少像素内开始加速
+  edgeZone: 88, // 距边缘多少像素内开始加速（合并后布局下留足减速余量，避免贴边却几乎不滚）
   maxSpeed: 900, // 紧贴边缘时的最大速度（px/秒）
 });
 

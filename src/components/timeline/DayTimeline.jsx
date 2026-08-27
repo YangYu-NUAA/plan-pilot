@@ -80,8 +80,9 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
   }
   function applyNodeScroll(node, deltaPx) {
     const max = node.scrollHeight - node.clientHeight;
-    const next = clampScroll(node.scrollTop, deltaPx, max);
-    if (next !== node.scrollTop) node.scrollTop = next;
+    const before = node.scrollTop;
+    const next = clampScroll(before, deltaPx, max);
+    if (next !== before) node.scrollTop = next;
   }
 
   useEffect(() => {

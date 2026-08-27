@@ -172,17 +172,21 @@ try {
     const internalMax = await tl.evaluate((el) => el.scrollHeight - el.clientHeight);
     check("B 前置：内部滚动余量 ≥ 150px", internalMax >= 150, `max=${internalMax}`);
 
+    // 指针钉在画布真实下边缘内侧。先开始拖拽再测几何：拖拽会触发渲染/布局微移，
+    // 用拖拽后的盒子保证 clientY 与 edgeZone 的距离确定（贴近边缘、速度接近 max）。
+    await beginHtmlDrag(page);
+    await feedDragOver(page, 10_000); // 先喂一个远点占位，触发 dropMin 渲染与布局稳定
+    await page.waitForTimeout(150);
     const boxB = await tl.boundingBox();
-    // 指针钉在画布真实下边缘内侧（深入边缘区）。合成事件可投递任意 clientY。
-    const insideY = Math.floor(boxB.y + boxB.height - 10);
+    const insideY = Math.floor(boxB.y + boxB.height - 8);
     const beforeScrollB = await tl.evaluate((el) => el.scrollTop);
 
-    await beginHtmlDrag(page);
     for (let i = 0; i < 16; i += 1) {
       await feedDragOver(page, insideY);
       await page.waitForTimeout(150);
     }
     const afterScrollB = await tl.evaluate((el) => el.scrollTop);
+
     check("B: 时间轴内贴下边缘 → 内部画布向下平移", afterScrollB > beforeScrollB + 40, `${beforeScrollB} → ${afterScrollB}`);
     await endHtmlDrag(page);
 
