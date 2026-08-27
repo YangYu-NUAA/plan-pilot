@@ -1563,6 +1563,30 @@ button.topbar-highlight:hover {
   line-height: 1.55;
 }
 
+/* 文件同步不可用警告条（App 顶层，位于 topbar 上方） */
+.sync-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger-ink);
+}
+
+.sync-warning svg {
+  flex: none;
+  opacity: 0.85;
+}
+
+.sync-warning span {
+  flex: 1;
+}
+
 .schedule-notice.is-error {
   background: var(--danger-soft);
   border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
@@ -2863,6 +2887,8 @@ html[data-theme="night"] {
 /* —— 目标甘特图 —— */
 .goal-gantt-panel { margin-top: 16px; }
 .gantt-hint { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.gantt-zoom-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.gantt-zoom-tools .icon-button:disabled { opacity: 0.35; cursor: default; }
 .gantt { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
 
 .gantt-axis,
@@ -2894,10 +2920,13 @@ html[data-theme="night"] {
 .gantt-pct { flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
 .gantt-pct.is-auto { color: var(--accent); font-weight: 700; }
 
-.gantt-track { position: relative; min-height: 56px; }
+.gantt-track { position: relative; min-height: 56px; overflow: hidden; }
 .gantt-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--hair); }
 .gantt-track-today { position: absolute; top: 0; bottom: 0; width: 2px; background: color-mix(in srgb, var(--accent) 50%, transparent); }
-.gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 24px; min-width: 8px; border-radius: 7px; background: var(--accent-soft); border: 1.5px solid var(--accent); display: flex; align-items: center; overflow: hidden; }
+.gantt-bar { position: absolute; top: 50%; transform: translate(var(--bar-shift, 0px), -50%); height: 24px; min-width: 8px; border-radius: 7px; background: var(--accent-soft); border: 1.5px solid var(--accent); display: flex; align-items: center; overflow: hidden; }
+.gantt-bar.is-movable { cursor: grab; touch-action: none; }
+.gantt-bar.is-movable:hover { filter: brightness(1.06); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.gantt-bar.is-dragging { cursor: grabbing; z-index: 6; box-shadow: 0 4px 12px color-mix(in srgb, #000 22%, transparent); transition: none; user-select: none; }
 .gantt-bar.estimated { border-style: dashed; opacity: 0.85; }
 .gantt-bar.explicit { border-style: double; border-width: 4px; }
 .gantt-bar.priority-high { border-color: var(--danger); }
