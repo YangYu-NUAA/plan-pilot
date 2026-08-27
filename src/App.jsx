@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
+  CloudOff,
   ChevronRight,
   Clock3,
   Command as CommandIcon,
@@ -102,7 +103,7 @@ import { BrandMark } from "./components/ui/BrandMark.jsx";
 
 
 function App() {
-  const [planner, setPlanner] = usePlannerStore({
+  const [planner, setPlanner, fileSyncIssue] = usePlannerStore({
     compactPlannerTasks,
     mergeTasks: mergeDuplicateTasks,
   });
@@ -110,6 +111,11 @@ function App() {
   const [localAiKey, updateLocalAiKey] = useLocalAiKey();
   const [voiceKey, updateVoiceKey] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
+  const [syncWarningDismissed, setSyncWarningDismissed] = useState(false); // 文件同步不可用提示的关闭状态
+  useEffect(() => {
+    // 同步恢复后重置关闭标记，下次再失败时提示会重新出现
+    if (!fileSyncIssue) setSyncWarningDismissed(false);
+  }, [fileSyncIssue]);
   const [activeView, setActiveView] = useState("today");
   const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
   const [cmdOpen, setCmdOpen] = useState(false); // ⌘K 命令条开合
@@ -1832,6 +1838,21 @@ function App() {
       />
 
       <section className="workspace">
+        {fileSyncIssue && !syncWarningDismissed && (
+          <div className="sync-warning" role="alert">
+            <CloudOff size={15} />
+            <span>{fileSyncIssue}</span>
+            <button
+              type="button"
+              className="schedule-notice-close"
+              onClick={() => setSyncWarningDismissed(true)}
+              aria-label="关闭提示"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <header className="topbar">
           <div>
             <p className="eyebrow">{activeView === "now" ? "现在该做什么" : activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>
