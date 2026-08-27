@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  CloudOff,
   Command as CommandIcon,
   ListChecks,
   Settings,
@@ -102,7 +103,7 @@ import { BrandMark } from "./components/ui/BrandMark.jsx";
 
 
 function App() {
-  const [planner, setPlanner] = usePlannerStore({
+  const [planner, setPlanner, fileSyncIssue] = usePlannerStore({
     compactPlannerTasks,
     mergeTasks: mergeDuplicateTasks,
   });
@@ -110,6 +111,7 @@ function App() {
   const [localAiKey, updateLocalAiKey] = useLocalAiKey();
   const [voiceKey, updateVoiceKey] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
+  const [syncWarningDismissed, setSyncWarningDismissed] = useState(false); // 文件同步不可用提示的关闭状态
   const [activeView, setActiveView] = useState("today");
   const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
   const [cmdOpen, setCmdOpen] = useState(false); // ⌘K 命令条开合
@@ -236,6 +238,11 @@ function App() {
       .then((s) => setServerAiKeyLoaded(!!s.configured))
       .catch(() => setServerAiKeyLoaded(false));
   }, []);
+
+  useEffect(() => {
+    // 同步恢复后重置关闭标记，下次再失败时提示会重新出现
+    if (!fileSyncIssue) setSyncWarningDismissed(false);
+  }, [fileSyncIssue]);
 
   const dayPlan = planner.dayPlans[selectedDate] || {
     fixed: "",
@@ -857,11 +864,14 @@ function App() {
     const existing = planner.blocks.find((block) => block.id === blockId);
     if (!existing) return false;
     const nextBlock = { ...existing, ...patch };
-    if (nextBlock.type !== "busy" && !isInsideWorkWindow(nextBlock, planner.settings)) {
+    // 事件类豁免块（自动排期有意放在工作时段外）在拖拽/调整时保留豁免，
+    // 但新建块仍然不允许超出工作时段。
+    const eventExempt = nextBlock.type !== "busy" && Boolean(nextBlock.outsideWindow);
+    if (!eventExempt && nextBlock.type !== "busy" && !isInsideWorkWindow(nextBlock, planner.settings)) {
       setScheduleNotice({ text: "任务时间块超出了当前工作时段，请调整时间，或先在左侧把工作时段改宽。", tone: "error" });
       return false;
     }
-    if (nextBlock.type !== "busy" && overlapsAny(nextBlock, getProtectedBreaks(planner.settings))) {
+    if (!eventExempt && nextBlock.type !== "busy" && overlapsAny(nextBlock, getProtectedBreaks(planner.settings))) {
       setScheduleNotice(breakConflictNotice());
       return false;
     }
@@ -1846,6 +1856,20 @@ function App() {
       />
 
       <section className="workspace">
+        {fileSyncIssue && !syncWarningDismissed && (
+          <div className="sync-warning" role="alert">
+            <CloudOff size={15} />
+            <span>{fileSyncIssue}</span>
+            <button
+              type="button"
+              className="schedule-notice-close"
+              onClick={() => setSyncWarningDismissed(true)}
+              aria-label="关闭提示"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <div>
             <p className="eyebrow">{activeView === "now" ? "现在该做什么" : activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>

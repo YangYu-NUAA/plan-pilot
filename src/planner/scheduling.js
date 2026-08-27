@@ -5,6 +5,7 @@ import {
   isMeetingSentence,
   isPostMeetingTask,
   isTicketPurchaseTask,
+  isEventLikeTodo,
 } from "../planningSemantics.js";
 import { priorityOrder } from "../constants/labels.js";
 import { sum } from "../utils/form.js";
@@ -69,6 +70,26 @@ export function meetingEndForTask(taskTitle, blocks) {
 
 export function sortBlocks(blocks) {
   return [...blocks].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+}
+
+// 全日范围内（boundaryStart..boundaryEnd 分钟）的空闲空档：反向 occupied 列表。
+// 与 getFreeIntervals 不同：不基于工作时段，也不做 notBefore 处理，供事件类豁免使用。
+export function freeDayGaps(boundaryStartMin, boundaryEndMin, occupiedBlocks) {
+  const lo = Math.max(0, Number(boundaryStartMin) || 0);
+  const hi = Math.min(1440, Math.max(lo, Number(boundaryEndMin) || 1440));
+  const occ = sortBlocks(occupiedBlocks || [])
+    .map((block) => ({ start: toMinutes(block.start), end: toMinutes(block.end) }))
+    .filter((b) => b.end > b.start && b.end > lo && b.start < hi)
+    .map((b) => ({ start: Math.max(b.start, lo), end: Math.min(b.end, hi) }));
+  const gaps = [];
+  let cursor = lo;
+  for (const o of occ) {
+    if (o.start > cursor) gaps.push({ start: cursor, end: Math.min(o.start, hi) });
+    cursor = Math.max(cursor, o.end);
+    if (cursor >= hi) break;
+  }
+  if (cursor < hi) gaps.push({ start: cursor, end: hi });
+  return gaps.filter((g) => g.end > g.start);
 }
 
 // Greedy lane assignment for overlapping blocks. Each block gets a `_col`
@@ -190,12 +211,14 @@ export function polishAiBlocks(blocks, segments) {
 // dropped. Blocks shorter than MIN_BLOCK_MIN after clamping are also dropped.
 export function clampToSegments(blocks, segments) {
   const MIN_BLOCK_MIN = 5;
-  if (!segments.length) return blocks.filter(() => false);
+  if (!segments.length) return blocks.filter((b) => b && b.outsideWindow);
   const segRanges = segments.map((s) => ({ start: toMinutes(s.start), end: toMinutes(s.end) }));
 
   return blocks
     .filter((b) => b && b.start && b.end)
     .map((b) => {
+      // 事件类豁免块（自动排期有意放在工作时段外）不做裁剪，原样保留。
+      if (b.outsideWindow) return { ...b };
       const sMin = toMinutes(b.start);
       const eMin = toMinutes(b.end);
       if (eMin <= sMin) return { ...b, _drop: true };
@@ -275,7 +298,12 @@ export function reconcileScheduleBlocks(blocks, settings, selectedDate) {
   }
 
   taskBlocks.forEach((block) => {
-    if (!isInsideWorkWindow(block, settings) || overlapsAny(block, protectedBreaks) || overlapsAny(block, busyBlocks)) {
+    // 事件类豁免：带 outsideWindow 标记的块（自动排期有意放在工作时段外的事件）
+    // 不受工作窗口/受保护休息约束，但仍然禁止与忙块及其他任务重叠。
+    const windowOk = block.outsideWindow || isInsideWorkWindow(block, settings);
+    const breakOk = block.outsideWindow || !overlapsAny(block, protectedBreaks);
+    const busyOk = !overlapsAny(block, busyBlocks);
+    if (!windowOk || !breakOk || !busyOk) {
       remove(block);
     }
   });
@@ -366,6 +394,7 @@ export function normalizeAiScheduleResult(result, { tasks, existingBlocks, setti
     const estimateMinutes = estimateMinutesForTitle(task.title, Number(task.estimateMinutes) || duration(start, requestedEnd));
     const end = toTime(toMinutes(start) + estimateMinutes);
 
+    const eventExempt = isEventLikeTodo(task.title);
     const block = {
       id: uid("block"),
       taskId,
@@ -375,10 +404,16 @@ export function normalizeAiScheduleResult(result, { tasks, existingBlocks, setti
       start,
       end,
       auto: true,
+      outsideWindow: false, // 下方判定后补写
     };
+    if (eventExempt) {
+      block.outsideWindow = !isInsideWorkWindow(block, settings);
+    }
 
-    if (!isBlockInsideIntervals(block, intervals)) return;
+    // 事件类豁免：允许建议块落在工作时段之外，但仍不得与任何已有安排重叠。
     if (overlapsAny(block, manualBlocks.concat(pinned.blocks).concat(autoBlocks))) return;
+    if (!eventExempt && !isBlockInsideIntervals(block, intervals)) return;
+
     autoBlocks.push(block);
     scheduledTaskIds.add(taskId);
   });
@@ -586,6 +621,7 @@ export function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate,
 
       return {
         ...task,
+        eventExempt: isEventLikeTodo(task.title),
         placementReason: ambiguousTicketPurchase
           ? "这像是买票任务，但标题里的时间更可能是车次/出发时间，不是你打算买票的执行时间。"
           : postMeeting ? "看起来是会后整理或后续行动，但我没找到对应会议时间。" : "",
@@ -641,6 +677,39 @@ export function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate,
       cursor = end + Number(tasksBefore % 2 === 0 ? (settings.shortBreak || 10) : (settings.longBreak || 30));
     }
   });
+
+  // —— 事件类待办豁免：工作时段彻底放不下的事件（会议/聚餐/外出等），
+  // 允许落到工作时段之外的全日空档（从最早工作段起点到当日 24:00，不逾凌晨）。
+  // 无休息垫片（事件本身可以落在午休/晚间），但绝不与已占用块重叠。
+  const exemptEvents = unscheduled.filter((task) => task.eventExempt);
+  if (exemptEvents.length) {
+    const segStarts = (settings.workSegments || []).map((seg) => toMinutes(seg.start));
+    const bandStart = segStarts.length ? Math.min(...segStarts) : 9 * 60;
+    const occupancy = manualBlocks.concat(pinned.blocks, autoBlocks);
+    exemptEvents.forEach((task) => {
+      const estimate = Number(task.estimateMinutes) || 30;
+      const gaps = freeDayGaps(bandStart, 24 * 60, occupancy);
+      const earliest = typeof notBefore === "number" ? Math.max(notBefore, bandStart) : bandStart;
+      const gap = gaps.find((g) => Math.max(g.start, earliest) + estimate <= g.end);
+      if (!gap) return;
+      const start = Math.max(gap.start, earliest);
+      const end = start + estimate;
+      const block = {
+        id: uid("block"),
+        taskId: task.id,
+        type: "task",
+        date: selectedDate,
+        start: toTime(start),
+        end: toTime(end),
+        auto: true,
+        outsideWindow: true,
+      };
+      autoBlocks.push(block);
+      occupancy.push(block);
+      const idx = unscheduled.findIndex((t) => t.id === task.id);
+      if (idx >= 0) unscheduled.splice(idx, 1);
+    });
+  }
 
   unscheduled.forEach((task) => {
     questions.push({
