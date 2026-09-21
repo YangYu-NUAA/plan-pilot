@@ -8,6 +8,7 @@ import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
 import { emptyDraft } from "../coachHarness.js";
 import { EmptyState } from "../components/EmptyState.jsx";
+import { OmniBar } from "../components/OmniBar.jsx";
 import { VoiceButton } from "../components/ui/VoiceButton.jsx";
 import { useFlip } from "../hooks/useFlip.js";
 import { DayTimeline } from "../components/timeline/DayTimeline.jsx";
@@ -73,6 +74,7 @@ export function TodayView({
   sendTodayAiReply,
   loadSampleData,
   onStartFocus,
+  onCommand,
   ai,
   localAiKey,
   voiceKey,
@@ -211,6 +213,14 @@ export function TodayView({
     setEditingTaskId(null);
   }
 
+  // OmniBar 弱输入转给 AI 访谈，并把访谈面板滚进视野看回应
+  function handleAskAi(text) {
+    sendPlanningCoachText(text);
+    requestAnimationFrame(() => {
+      document.querySelector(".interview-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
   return (
     <div className="today-wrap">
       <GreetingCard
@@ -220,6 +230,17 @@ export function TodayView({
         ai={ai}
         apiKey={localAiKey}
         serverKeyOk={serverAiKeyLoaded}
+      />
+      <OmniBar
+        selectedDate={selectedDate}
+        todayStr={getLocalDate()}
+        onCommand={onCommand}
+        onAskAi={handleAskAi}
+        voiceEngine={planner.settings.voiceEngine || "stepfun"}
+        voiceApiKey={voiceKey || localAiKey}
+        voiceBaseUrl={planner.settings.voiceAsrBaseUrl || ""}
+        voiceModel={planner.settings.voiceAsrModel || ""}
+        voiceAutoSend={planner.settings.voiceAutoSend !== false}
       />
       <div className="cockpit-grid">
       <section className="coach-band">

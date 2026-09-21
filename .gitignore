@@ -20,3 +20,5 @@ scripts/
 .playwright-mcp/
 test-results/
 .DS_Store
+.context_prefix.json
+planning/

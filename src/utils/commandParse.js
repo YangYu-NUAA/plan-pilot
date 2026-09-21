@@ -206,11 +206,14 @@ export function parseCommandInput(raw, { selectedDate, todayStr }) {
       });
     }
   }
-  // 总是提供「仅添加任务」的退路
+  // 总是提供「仅添加任务」的退路。
+  // weak 标记：没有任何日期/时间/时长信号的裸文本——OmniBar 对这类输入
+  // 不静默建任务，而是自动转给 AI 访谈（⌘K 里用户是显式选择，不受影响）。
   const estimateMinutes = dur.minutes || estimateMinutesForTitle(title, 30);
+  const weak = !d.date && !t.start && !dur.minutes;
   intents.push({
     kind: "add-task",
-    date, title, estimateMinutes,
+    date, title, estimateMinutes, weak,
     label: `添加任务「${title}」`,
     hint: `${dateLabel} · 约 ${estimateMinutes} 分钟`,
   });

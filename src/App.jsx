@@ -1941,6 +1941,7 @@ function App() {
             sendTodayAiReply={sendTodayAiReply}
             loadSampleData={loadSampleData}
             onStartFocus={startFocus}
+            onCommand={execCommandIntent}
             ai={planner.ai}
             localAiKey={localAiKey}
             voiceKey={voiceKey}

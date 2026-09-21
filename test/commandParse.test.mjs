@@ -84,3 +84,15 @@ test("日期 + 任务（无时间）", () => {
   assert.equal(t.kind, "add-task");
   assert.equal(t.date, "2026-07-27");
 });
+
+test("weak 标记：无日期/时间/时长信号的裸输入为弱意图", () => {
+  const [weak] = parseCommandInput("写周报", CTX);
+  assert.equal(weak.kind, "add-task");
+  assert.equal(weak.weak, true); // OmniBar 对这类不静默建任务，转 AI 访谈
+  const [withDur] = parseCommandInput("写周报 30分钟", CTX);
+  assert.equal(withDur.weak, false);
+  const [withDate] = parseCommandInput("明天 写周报", CTX);
+  assert.equal(withDate.weak, false);
+  const [, fallback] = parseCommandInput("明天下午3点 组会", CTX);
+  assert.equal(fallback.weak, false);
+});
