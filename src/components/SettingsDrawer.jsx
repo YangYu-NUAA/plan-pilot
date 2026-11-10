@@ -33,8 +33,10 @@ export function SettingsDrawer({
   applyAiProviderPreset,
   localAiKey,
   updateLocalAiKey,
+  aiKeyStorage,
   voiceKey,
   updateVoiceKey,
+  voiceKeyStorage,
   serverAiKeyLoaded,
   aiKeyLoaded,
   currentAiPreset,
@@ -43,6 +45,12 @@ export function SettingsDrawer({
   resetLocalData,
 }) {
   const [breakDraft, setBreakDraft] = useState({ start: "12:00", end: "13:00" });
+  const usesSecureStorage = ["keychain", "system"].includes(aiKeyStorage?.backend);
+  const keyStatusText = aiKeyStorage?.saving
+    ? "保存中…"
+    : !aiKeyStorage?.ready
+      ? "读取中…"
+      : aiKeyLoaded ? "已加载" : "未配置";
 
   function addBreak() {
     if (toMinutes(breakDraft.end) <= toMinutes(breakDraft.start)) return;
@@ -222,6 +230,13 @@ export function SettingsDrawer({
                   placeholder="留空则回落：聊天 Key → 服务器环境变量"
                   autoComplete="off"
                 />
+                {voiceKeyStorage?.error ? (
+                  <span className="settings-hint credential-error" role="alert">{voiceKeyStorage.error}</span>
+                ) : ["keychain", "system"].includes(voiceKeyStorage?.backend) ? (
+                  <span className="settings-hint">
+                    {voiceKeyStorage.saving ? "正在加密保存…" : "与聊天 Key 一样，由系统安全存储加密保存。"}
+                  </span>
+                ) : null}
               </label>
               <label>
                 ASR 模型
@@ -449,7 +464,7 @@ export function SettingsDrawer({
               autoComplete="off"
             />
             <span className={`key-status ${aiKeyLoaded ? "loaded" : "missing"}`}>
-              {aiKeyLoaded ? "已加载" : "未配置"}
+              {keyStatusText}
             </span>
           </label>
           <details className="ai-advanced">
@@ -482,11 +497,16 @@ export function SettingsDrawer({
           <p>
             当前协议：{planner.ai.protocol === "anthropic" ? "Anthropic Messages" : "OpenAI 兼容"}。
             {serverAiKeyLoaded
-              ? "已检测到服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY），Key 不会持久化到服务器或数据文件中。如需改用浏览器 Key，清空环境变量后在上方输入框填写即可。"
-              : localAiKey.trim()
-                ? "浏览器 Key 存储在本地 localStorage，每次调用随请求临时传入本机代理，不会持久化到服务器或数据文件中。如需切换为服务端 Key，可配置环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或项目根目录 .env 文件，然后清空上方输入框。"
-                : "Key 可填写在上方输入框（存储在浏览器 localStorage），也可通过服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或项目根目录 .env 文件配置。"}
+              ? "已检测到服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY），Key 不会持久化到服务器或数据文件中。如需改用本地 Key，清空环境变量后在上方输入框填写即可。"
+              : usesSecureStorage
+                ? aiKeyStorage.backend === "keychain"
+                  ? "聊天 Key 由 macOS 钥匙串加密保存，重启 App 后自动加载；不会写入计划数据或导出文件。"
+                  : "聊天 Key 由系统安全存储加密保存，重启 App 后自动加载；不会写入计划数据或导出文件。"
+                : localAiKey.trim()
+                  ? "浏览器 Key 存储在本地 localStorage，每次调用随请求临时传入本机代理，不会持久化到服务器或数据文件中。如需切换为服务端 Key，可配置环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或项目根目录 .env 文件，然后清空上方输入框。"
+                  : "Key 可填写在上方输入框（存储在浏览器 localStorage），也可通过服务端环境变量（AI_API_KEY / DEEPSEEK_API_KEY / ANTHROPIC_API_KEY）或项目根目录 .env 文件配置。"}
           </p>
+          {aiKeyStorage?.error && <p className="credential-error" role="alert">{aiKeyStorage.error}</p>}
           {currentAiPreset.note && <p className="ai-provider-note">{currentAiPreset.note}</p>}
         </section>
 

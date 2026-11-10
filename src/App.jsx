@@ -1,6 +1,7 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { appNow, setActiveTimeZone } from "./utils/clock.js";import {
   CalendarDays,
+  CloudOff,
   ChevronRight,
   Clock3,
   Command as CommandIcon,
@@ -103,14 +104,19 @@ import { BrandMark } from "./components/ui/BrandMark.jsx";
 
 
 function App() {
-  const [planner, setPlanner] = usePlannerStore({
+  const [planner, setPlanner, fileSyncIssue] = usePlannerStore({
     compactPlannerTasks,
     mergeTasks: mergeDuplicateTasks,
   });
   const autoSchedulingRef = useRef(false); // 防自动安排并发（每实例，替代模块全局）—— from PR #6 (hrjtju)
-  const [localAiKey, updateLocalAiKey] = useLocalAiKey();
-  const [voiceKey, updateVoiceKey] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
+  const [localAiKey, updateLocalAiKey, aiKeyStorage] = useLocalAiKey();
+  const [voiceKey, updateVoiceKey, voiceKeyStorage] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
+  const [syncWarningDismissed, setSyncWarningDismissed] = useState(false); // 文件同步不可用提示的关闭状态
+  useEffect(() => {
+    // 同步恢复后重置关闭标记，下次再失败时提示会重新出现
+    if (!fileSyncIssue) setSyncWarningDismissed(false);
+  }, [fileSyncIssue]);
   const [activeView, setActiveView] = useState("today");
   const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
   const [cmdOpen, setCmdOpen] = useState(false); // ⌘K 命令条开合
@@ -202,6 +208,17 @@ function App() {
     setScheduleNotice({ text: "", tone: "" });
   }, [selectedDate]);
 
+  // 复盘按日期隔离：切换日期时载入当天已有内容，避免把昨天的草稿写进今天。
+  useEffect(() => {
+    const dailyReview = planner.reviews.find((review) => review.date === selectedDate && review.type === "daily");
+    setReviewDraft({
+      completed: dailyReview?.completed || "",
+      blockers: dailyReview?.blockers || "",
+      adjustments: dailyReview?.adjustments || "",
+      tomorrowFocus: dailyReview?.tomorrowFocus || "",
+    });
+  }, [selectedDate, planner.reviews]);
+
   // App 时区：设置变化即时生效（全站 getLocalDate/appNow 经 clock.js 统一读取）
   useEffect(() => {
     const tz = planner.settings.timezone;
@@ -245,6 +262,7 @@ function App() {
       .then((s) => setServerAiKeyLoaded(!!s.configured))
       .catch(() => setServerAiKeyLoaded(false));
   }, []);
+
 
   const dayPlan = planner.dayPlans[selectedDate] || {
     fixed: "",
@@ -584,6 +602,15 @@ function App() {
     try {
       // 全程「先算后用、确认才落盘」：在当前状态副本上计算，不直接改时间轴；结果存入 schedulePreview，等用户确认。
       const snapshot = { tasks: planner.tasks, blocks: planner.blocks };
+      const currentAppTime = appNow();
+      const nowDate = getLocalDate(currentAppTime);
+      const isTodayScheduling = nowDate === selectedDate;
+      const nowMinutes = currentAppTime.getHours() * 60 + currentAppTime.getMinutes();
+      const scheduleNow = toTime(nowMinutes);
+      const notBefore = isTodayScheduling ? nowMinutes : null;
+      const scheduleConstraintNote = isTodayScheduling
+        ? `\n\n<<< NO PAST SCHEDULING >>>\nToday is ${selectedDate}; the current time is ${scheduleNow}. You MUST NOT schedule any block before ${scheduleNow} — every block must start at or after ${scheduleNow}. If a fixed-time task's scheduled time has already passed, return it as a question to confirm deferral, and do NOT output a block for it.<<< END NO PAST SCHEDULING >>>`
+        : "";
       const committed = computeFixedPlanCommit(planner.tasks, planner.blocks);
       const prepared = preparePlannerForScheduling({
       tasks: committed.tasks,
@@ -601,6 +628,7 @@ function App() {
         existingBlocks: prepared.blocks,
         settings: planner.settings,
         selectedDate,
+        notBefore,
       });
       const polished = polishAiBlocks(result.blocks, planner.settings.workSegments).filter((b) => !b._drop);
       return {
@@ -641,10 +669,14 @@ function App() {
             content:
               `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. If a large task (≥120 min) cannot fit in a single free interval, consider splitting it across two sessions (e.g. morning + afternoon). Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message. If there are simply no tasks to place today, just return empty blocks with a brief note — do NOT generate questions asking the user to add todos.`,
           },
+          ...(isTodayScheduling
+            ? [{ role: "system", content: scheduleConstraintNote }]
+            : []),
           {
             role: "user",
             content: JSON.stringify({
               date: selectedDate,
+              now: scheduleNow,
               startOfDay: (planner.settings.workSegments && planner.settings.workSegments[0] && planner.settings.workSegments[0].start) || "09:00",
               endOfDay: (planner.settings.workSegments && planner.settings.workSegments[planner.settings.workSegments.length - 1] && planner.settings.workSegments[planner.settings.workSegments.length - 1].end) || "18:00",
               workSegments,
@@ -679,6 +711,7 @@ function App() {
         existingBlocks: prepared.blocks,
         settings: planner.settings,
         selectedDate,
+        notBefore,
       });
       const polished = polishAiBlocks(schedule.blocks, planner.settings.workSegments).filter((b) => !b._drop);
       setSchedulePreview({
@@ -852,11 +885,14 @@ function App() {
     const existing = planner.blocks.find((block) => block.id === blockId);
     if (!existing) return false;
     const nextBlock = { ...existing, ...patch };
-    if (nextBlock.type !== "busy" && !isInsideWorkWindow(nextBlock, planner.settings)) {
+    // 事件类豁免块（自动排期有意放在工作时段外）在拖拽/调整时保留豁免，
+    // 但新建块仍然不允许超出工作时段。
+    const eventExempt = nextBlock.type !== "busy" && Boolean(nextBlock.outsideWindow);
+    if (!eventExempt && nextBlock.type !== "busy" && !isInsideWorkWindow(nextBlock, planner.settings)) {
       setScheduleNotice({ text: "任务时间块超出了当前工作时段，请调整时间，或先在左侧把工作时段改宽。", tone: "error" });
       return false;
     }
-    if (nextBlock.type !== "busy" && overlapsAny(nextBlock, getProtectedBreaks(planner.settings))) {
+    if (!eventExempt && nextBlock.type !== "busy" && overlapsAny(nextBlock, getProtectedBreaks(planner.settings))) {
       setScheduleNotice(breakConflictNotice());
       return false;
     }
@@ -1681,6 +1717,7 @@ function App() {
     }
     setPlanner(hydratePlannerState(defaultState, mergeDuplicateTasks));
     updateLocalAiKey("");
+    updateVoiceKey("");
     // Immediately persist empty state to server to clear disk files（原生壳跳过）
     if (hasLocalServer) {
       fetch("/api/data", {
@@ -1808,17 +1845,18 @@ function App() {
 
   function carryUnfinished() {
     const tomorrow = addDays(selectedDate, 1);
+    const count = planner.tasks.filter((task) => task.date === selectedDate && task.status !== "done").length;
+    if (!count) return;
+    const confirmed = window.confirm(`将 ${count} 个未完成任务顺延到 ${tomorrow}？\n仅移除这些任务在今天的关联时间块，固定安排和已完成任务保持不变。`);
+    if (!confirmed) return;
+
     patchPlanner((current) => {
-      const updatedTasks = current.tasks.map((task) =>
-        task.date === selectedDate && task.status !== "done"
-          ? { ...task, date: tomorrow, status: "open" }
-          : task,
+      const carriedIds = new Set(
+        current.tasks.filter((task) => task.date === selectedDate && task.status !== "done").map((task) => task.id),
       );
       return {
-        tasks: updatedTasks,
-        blocks: current.blocks.filter(
-          (block) => block.date !== selectedDate || updatedTasks.find((t) => t.id === block.taskId)?.status === "done",
-        ),
+        tasks: current.tasks.map((task) => carriedIds.has(task.id) ? { ...task, date: tomorrow, status: "open" } : task),
+        blocks: current.blocks.filter((block) => block.date !== selectedDate || !carriedIds.has(block.taskId)),
       };
     });
     setSelectedDate(tomorrow);
@@ -1839,18 +1877,23 @@ function App() {
         <nav className="rail-nav">
           <button className={activeView === "now" ? "active" : ""} data-tip="当下" aria-label="当下" onClick={() => setActiveView("now")}>
             <Zap size={20} />
+            <span className="rail-label">当下</span>
           </button>
           <button className={activeView === "today" ? "active" : ""} data-tip="今日" aria-label="今日" onClick={() => setActiveView("today")}>
             <CalendarDays size={20} />
+            <span className="rail-label">今日</span>
           </button>
           <button className={activeView === "goals" ? "active" : ""} data-tip="目标" aria-label="目标" onClick={() => setActiveView("goals")}>
             <Target size={20} />
+            <span className="rail-label">目标</span>
           </button>
           <button className={activeView === "review" ? "active" : ""} data-tip="复盘" aria-label="复盘" onClick={() => setActiveView("review")}>
             <ListChecks size={20} />
+            <span className="rail-label">复盘</span>
           </button>
           <button data-tip="命令条 ⌘K" aria-label="命令条" onClick={() => setCmdOpen(true)}>
             <CommandIcon size={20} />
+            <span className="rail-label">命令</span>
           </button>
         </nav>
         <button
@@ -1860,6 +1903,7 @@ function App() {
           onClick={() => setSettingsOpen((open) => !open)}
         >
           <Settings size={20} />
+          <span className="rail-label">设置</span>
         </button>
       </aside>
 
@@ -1887,8 +1931,10 @@ function App() {
         applyAiProviderPreset={applyAiProviderPreset}
         localAiKey={localAiKey}
         updateLocalAiKey={updateLocalAiKey}
+        aiKeyStorage={aiKeyStorage}
         voiceKey={voiceKey}
         updateVoiceKey={updateVoiceKey}
+        voiceKeyStorage={voiceKeyStorage}
         serverAiKeyLoaded={serverAiKeyLoaded}
         aiKeyLoaded={aiKeyLoaded}
         currentAiPreset={currentAiPreset}
@@ -1898,17 +1944,33 @@ function App() {
       />
 
       <section className="workspace">
+        {fileSyncIssue && !syncWarningDismissed && (
+          <div className="sync-warning" role="alert">
+            <CloudOff size={15} />
+            <span>{fileSyncIssue}</span>
+            <button
+              type="button"
+              className="schedule-notice-close"
+              onClick={() => setSyncWarningDismissed(true)}
+              aria-label="关闭提示"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <header className="topbar">
           <div>
             <p className="eyebrow">{activeView === "now" ? "现在该做什么" : activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>
             <h1>{viewHeadline}</h1>
           </div>
+          {(activeView === "today" || activeView === "review") && (
           <div className="date-switcher">
-            <button title="前一天" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+            <button title="前一天" aria-label="前一天" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
               <ChevronRight className="flip" size={18} />
             </button>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
-            <button title="后一天" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+            <input type="date" aria-label="选择规划日期" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            <button title="后一天" aria-label="后一天" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
               <ChevronRight size={18} />
             </button>
             {selectedDate !== getLocalDate() && (
@@ -1917,6 +1979,7 @@ function App() {
               </button>
             )}
           </div>
+          )}
         </header>
 
         <ErrorBoundary>
@@ -1986,6 +2049,7 @@ function App() {
             scheduleTaskAtMinute={scheduleTaskAtMinute}
             aiStatus={aiStatus}
             aiTaskSuggestions={aiTaskSuggestions}
+            setAiTaskSuggestions={setAiTaskSuggestions}
             generateTodayAiGuide={generateTodayAiGuide}
             acceptAiTaskSuggestions={acceptAiTaskSuggestions}
             planningCoach={planningCoach}

@@ -275,6 +275,8 @@ textarea {
   color: #ffffff;
 }
 
+.rail-label { display: none; }
+
 /* —— 设置抽屉 —— */
 .drawer-overlay {
   position: fixed;
@@ -639,6 +641,13 @@ textarea {
   margin: 0;
   color: #cbd8d3;
   font-size: 12px;
+}
+
+.ai-panel p.credential-error,
+.settings-hint.credential-error {
+  color: #fecaca;
+  opacity: 1;
+  line-height: 1.5;
 }
 
 .key-status {
@@ -2863,6 +2872,8 @@ html[data-theme="night"] {
 /* —— 目标甘特图 —— */
 .goal-gantt-panel { margin-top: 16px; }
 .gantt-hint { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.gantt-zoom-tools { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.gantt-zoom-tools .icon-button:disabled { opacity: 0.35; cursor: default; }
 .gantt { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
 
 .gantt-axis,
@@ -2894,10 +2905,13 @@ html[data-theme="night"] {
 .gantt-pct { flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
 .gantt-pct.is-auto { color: var(--accent); font-weight: 700; }
 
-.gantt-track { position: relative; min-height: 56px; }
+.gantt-track { position: relative; min-height: 56px; overflow: hidden; }
 .gantt-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--hair); }
 .gantt-track-today { position: absolute; top: 0; bottom: 0; width: 2px; background: color-mix(in srgb, var(--accent) 50%, transparent); }
-.gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 24px; min-width: 8px; border-radius: 7px; background: var(--accent-soft); border: 1.5px solid var(--accent); display: flex; align-items: center; overflow: hidden; }
+.gantt-bar { position: absolute; top: 50%; transform: translate(var(--bar-shift, 0px), -50%); height: 24px; min-width: 8px; border-radius: 7px; background: var(--accent-soft); border: 1.5px solid var(--accent); display: flex; align-items: center; overflow: hidden; }
+.gantt-bar.is-movable { cursor: grab; touch-action: none; }
+.gantt-bar.is-movable:hover { filter: brightness(1.06); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.gantt-bar.is-dragging { cursor: grabbing; z-index: 6; box-shadow: 0 4px 12px color-mix(in srgb, #000 22%, transparent); transition: none; user-select: none; }
 .gantt-bar.estimated { border-style: dashed; opacity: 0.85; }
 .gantt-bar.explicit { border-style: double; border-width: 4px; }
 .gantt-bar.priority-high { border-color: var(--danger); }
@@ -3437,6 +3451,13 @@ li,
   animation: fade-in var(--dur-fast) ease-out;
 }
 .omnibar-voice-error { margin-top: 6px; }
+.omnibar-hint {
+  margin: 6px 18px 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  animation: fade-in var(--dur-fast) ease-out;
+}
 
 /* —— 手动表单收起：表单降级为「高级模式」 —— */
 .manual-toggle {
@@ -3540,7 +3561,13 @@ li,
   .rail .brand-mark { display: none; }
   .rail-nav { flex: 1; flex-direction: row; justify-content: space-around; gap: 0; }
   .rail-nav button,
-  .rail-settings { width: 48px; height: 48px; min-height: 48px; border-radius: 12px; }
+  .rail-settings {
+    width: 48px; height: 52px; min-height: 52px; border-radius: 12px;
+    display: flex; flex-direction: column; justify-content: center; gap: 2px;
+    flex-shrink: 0;
+  }
+  .rail-nav button { flex: 1; max-width: 64px; }
+  .rail-label { display: block; font-size: 10px; line-height: 1.2; font-weight: 600; }
   /* tooltip 在触屏无意义；激活指示条从左侧移到顶部 */
   .rail-nav button::after,
   .rail-settings::after { display: none; }
@@ -3550,6 +3577,25 @@ li,
   .workspace { padding: 14px 12px calc(84px + env(safe-area-inset-bottom, 0px)); }
   .topbar h1 { font-size: 24px; }
   .topbar { gap: 10px; margin-bottom: 12px; }
+
+  /* 导航已移到底部，设置不再给旧侧轨预留 64px；窄屏统一单列。 */
+  .drawer-overlay { z-index: 109; }
+  .settings-drawer {
+    left: 0;
+    width: min(420px, 100vw);
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    z-index: 110;
+    padding: 16px 18px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .settings-drawer .settings-panel,
+  .settings-drawer .ai-panel,
+  .settings-drawer .data-panel { grid-template-columns: minmax(0, 1fr); }
+  .settings-drawer input,
+  .settings-drawer select { min-height: 40px; }
+  .settings-drawer .settings-voice-asr input { height: 40px; }
+  .settings-drawer .drawer-close { width: 40px; height: 40px; }
 
   /* 统计条 2×2（覆盖 860px 时的单列堆叠） */
   .stats-row { grid-template-columns: 1fr 1fr; }
@@ -3589,6 +3635,8 @@ li,
 
 /* 触屏无 hover：时间轴块的勾选与操作按钮常驻可见，任务行按钮保持可点 */
 @media (hover: none) {
+  .dt-blk { touch-action: pan-y; cursor: default; }
+  .dt-resize { display: none; }
   .dt-check { opacity: 1; }
   .dt-actions { opacity: 1; pointer-events: auto; }
   .dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }
@@ -3889,3 +3937,33 @@ li,
   font-size: 12.5px; font-weight: 700; cursor: pointer;
 }
 .pip-extend:hover { color: var(--ink); border-color: var(--ink); }
+
+/* 窄屏 OmniBar：输入动作保持一行，访谈范围独占第二行。 */
+@media (max-width: 560px) {
+  .omnibar {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 36px 36px;
+    border-radius: 22px;
+  }
+  .omnibar > .voice-btn { grid-column: 1; grid-row: 1; }
+  .omnibar > input { grid-column: 2; grid-row: 1; width: 100%; }
+  .omnibar > .omnibar-send { grid-column: 3; grid-row: 1; }
+  .omnibar > .omnibar-ai { grid-column: 4; grid-row: 1; }
+  .omnibar > .omnibar-scope { grid-column: 2 / -1; grid-row: 2; justify-self: start; }
+  .omnibar-hint { margin-left: 8px; margin-right: 8px; }
+}
+
+/* 文件同步不可用的警告条（AI 诊断化配套）：可关闭、不影响布局 */
+.sync-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger-ink);
+}
