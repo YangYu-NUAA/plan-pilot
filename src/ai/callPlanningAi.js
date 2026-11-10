@@ -1,5 +1,6 @@
 import { tryExtractJson, richestJson, isMeaningfulJson } from "../jsonExtract.js";
-import { isNative } from "../app/platform.js";
+import { isElectron, isNative } from "../app/platform.js";
+import { getAiNetworkErrorMessage } from "../app/platformMessages.js";
 import { directChatFetch } from "./directAi.js";
 
 function flattenMessageContent(value) {
@@ -53,13 +54,9 @@ export async function callPlanningAi({
         }),
       });
     } catch (error) {
-      // 网络层失败（TypeError: Failed to fetch）：
-      // - 浏览器：请求从未到达本地 API 代理——dev server 未运行 / 正在重启 / 被防火墙或代理拦截。
-      //   重试无意义，直接转成可行动的提示，避免误导性的“可换更稳的模型”建议。
-      // - 原生壳（directChatFetch）：无本地代理可言，是设备网络不可达或服务商地址不通。
-      const wrapped = isNative
-        ? new Error("网络不可达：无法连接 AI 服务，请检查设备网络或服务商地址后重试。")
-        : new Error("本地 API 代理不可达：dev server 未运行或正在重启，请先启动服务（npm run dev 或 startup.bat）再试。");
+      // 网络层失败（TypeError: Failed to fetch）：按 Web / Android / Electron 给出对应处理方式。
+      // fatal 避免无意义重试；cause 保留原始网络错误供调试。
+      const wrapped = new Error(getAiNetworkErrorMessage({ native: isNative, electron: isElectron }));
       wrapped.fatal = true;
       wrapped.cause = error;
       throw wrapped;

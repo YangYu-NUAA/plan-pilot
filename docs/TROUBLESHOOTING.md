@@ -1,56 +1,89 @@
-# 故障排查：AI 报错「Failed to fetch」
+# 故障排查：AI 网络错误与文件同步
 
-> 症状：AI 规则访谈（或今日建议 / 目标拆解）报错
-> `Failed to fetch（已自动重试，仍未拿到可用 JSON；可换更稳的模型如 DeepSeek）`
+> 常见症状：目标拆解、今日建议或规划访谈提示 `Failed to fetch`、「本地 API 代理不可达」或「内嵌本地服务未响应」；也可能出现可关闭的文件同步警告。
 
-## 一句话结论
+## 先按平台定位
 
-**这不是 AI 上游（DeepSeek 等）的错误**，而是浏览器 → 本地 Vite 代理之间在 HTTP 层就没拿到响应——
-`Failed to fetch` 是浏览器对"连接被拒 / 连接被重置 / 请求从未完成"的统一网络层报错。
-真正的原因几乎都是：**dev server 没在运行，或正在重启**。
+同一个提示在不同平台上的请求链路不同，不要混用排查方法。
 
-（2026-08-27 起该错误已改为明确提示「本地 API 代理不可达：请先启动服务」，不再出现误导性的"换更稳的模型"建议；本文档保留完整分析供排查。）
-
-## 请求链路
-
-```
-浏览器 (fetch /api/ai/chat)
-  → Vite dev server 的 local-api-proxy 中间件 (vite.config.js)
-    → 上游 AI 服务商（OpenAI-compatible 或 Anthropic Messages）
-```
-
-- 前端入口：`src/ai/callPlanningAi.js` → `POST /api/ai/chat`
-- 代理：`vite.config.js` 中 `local-api-proxy` 插件（`configureServer` / `configurePreviewServer`）
-- 关键参数：上游 60 秒超时（AbortController）、请求体 5MB 上限（`readBody`）、API Key 来源（请求体 → 环境变量 `AI_API_KEY` / `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`）
-
-## 失败模式 → 报错文案对照（实测）
-
-| 场景 | 代理实际返回 | 前端看到的报错 | 处理建议 |
+| 平台 | AI 请求链路 | 计划数据 | 网络层失败时先检查 |
 |---|---|---|---|
-| **dev server 未运行 / 正在重启** | 无响应（连接被拒/重置） | `本地 API 代理不可达：dev server 未运行或正在重启…`（旧版为 `Failed to fetch（已自动重试…）`） | 启动服务：`startup.bat` 或 `npm run dev` |
-| 上游域名不可达 / 断网 / 地址错误 | `500 {"error":"fetch failed"}` | `(500) fetch failed（已自动重试…）` | 检查网络、上游 baseUrl |
-| 上游响应超过 60 秒 | `500 {"error":"This operation was aborted"}` | `(500) This operation was aborted…` | 换更快的模型，或调大 `vite.config.js` 的 60s 超时 |
-| 任何层无 API Key | `400 {"error":"Missing AI API key."}` | `(400) Missing AI API key.` | 设置里填浏览器 Key，或配置服务端环境变量 |
-| Key 无效 / 模型名不存在 / 地址错误 | 上游 401/404 透传 | `(401/404) <上游原因>` | 按上游提示修正 Key / 模型名 |
-| 请求体 > 5MB | 连接被销毁 | 曾表现为 `Failed to fetch` | 正常数据远达不到（全部数据仅几十 KB），除非任务标题/规划文本被粘贴了超大内容 |
+| **Web 浏览器** | 浏览器 → `/api/ai/chat` → 本地服务 → AI 服务商 | localStorage + `/api/data` 文件同步 | 本地服务是否仍在运行、是否正在重启 |
+| **Android（Capacitor）** | `CapacitorHttp` → AI 服务商，不经过本地代理 | 仅 localStorage，不请求 `/api/data` | 设备网络、服务商地址与协议 |
+| **Electron 桌面应用** | 渲染进程 → 随机回环端口上的内嵌服务 → AI 服务商 | 应用本地存储 + 内嵌服务写入应用数据目录 | 完全退出并重新打开 Plan Pilot；不要按 Web 方式另起服务 |
 
-## 排查步骤
+### Web
 
-1. **看报错文案**：含「本地 API 代理不可达」→ 直接启动服务即可（最小化窗口里的 server 可能被误关、或电脑重启后浏览器标签恢复了但服务没起）。
-2. **`(500) fetch failed`** → 上游网络问题：检查能否访问上游 baseUrl、是否有代理/防火墙拦截 node 进程。
-3. **`(500) This operation was aborted`** → 上游太慢：推理型模型（如 step-3.7-flash）思考耗时可能超过 60s 代理超时，换快速模型或调大超时。
-4. **`(401/404)`** → 配置问题：Key 或模型名，按上游原话修正。
-5. **页面打开但 AI 全部失败、其他功能正常**：这是本应用的一个已知"静默陷阱"——`/api/data` 同步失败过去被静默吞掉（已修复，见下），localStorage 让应用照常工作，只有 AI 调用暴露服务掉线。
+```text
+浏览器 (fetch /api/ai/chat)
+  → vite.config.js 注册的 local-api-proxy 中间件
+  → server/dataProxy.js 的 createApiHandler
+  → AI 服务商（OpenAI-compatible 或 Anthropic Messages）
+```
 
-## 已实施的修复（2026-08-27）
+- 确认启动本地服务的终端仍在运行；开发模式使用 `npm run dev`，自行配置的 `startup.bat` 也属于这一平台。
+- 页面仍显示不代表服务仍可用：浏览器可能保留了旧标签页，而终端已经关闭或服务正在重启。
+- 端口被占用时，以终端实际输出的 Local 地址为准。
 
-1. **网络层错误明确化**（`src/ai/callPlanningAi.js`）：`fetch` 抛出的网络层错误（TypeError）转成可行动的提示「本地 API 代理不可达：dev server 未运行或正在重启，请先启动服务」，标记 `fatal` 直接失败、不再做三次注定失败的重试；原始错误保留在 `cause`。
-2. **文件同步失败可见**（`src/hooks/usePlannerStore.js` + `src/App.jsx` + `src/styles.css`）：store 新增 `syncIssue`，顶栏下方渲染可关闭的警告条（数据暂存于浏览器、AI 与文件同步不可用）；服务恢复后自动消失；挂载加载失败先重试 3 次（间隔 3s，适配 `startup.bat` 等 60s 启动窗口）再提示。
-3. **测试**：新增 2 个网络层错误单测（`test/callPlanningAi.test.mjs`）；Playwright E2E 验证了"服务正常无警告 / 服务掉线出警告 / 掉线时访谈报明确错误"三个场景。
+### Android
+
+- `src/ai/directAi.js` 使用原生 HTTP 直连服务商，以绕过 WebView CORS；没有本地 Vite/Node 代理需要启动。
+- 「网络不可达」主要表示设备到服务商之间失败。检查网络、基地址、协议和服务商可访问性，而不是检查电脑上的开发服务器。
+- 计划数据只写 localStorage，因此没有 Web/Electron 的文件同步警告条。
+
+### Electron
+
+```text
+应用窗口 (fetch /api/ai/chat)
+  → electron/main.js 启动的 127.0.0.1:<随机端口> 内嵌服务器
+  → server/dataProxy.js 的 createApiHandler
+  → AI 服务商
+```
+
+- 内嵌服务器随应用启动，不需要也不应依赖外部终端。出现「Plan Pilot 内嵌本地服务未响应」时，先完全退出再重新打开应用。
+- 数据默认写入应用 userData 下的 `data/`；开发隔离可用 `PLAN_PILOT_USER_DATA_DIR` / `PLAN_PILOT_DATA_DIR`，详见 `docs/macos.md`。
+- AI Key 由 `electron/secureCredentialStore.js` 和系统安全存储处理。钥匙串锁定或权限问题与网络代理故障是两回事，应分别根据设置中的存储状态和 AI 响应状态码排查。
+
+## 公共代理实现
+
+Web 与 Electron 的 `/api/data`、`/api/profile`、`/api/ai/status`、`/api/ai/chat` 和 `/api/asr` 都使用 **`server/dataProxy.js`** 中的 `createApiHandler`：
+
+- `vite.config.js` 只负责把公共处理器注册到 Vite dev/preview server。
+- `electron/main.js` 只负责创建内嵌 HTTP 服务、静态文件服务和桌面生命周期。
+- 上游 60 秒超时、请求体上限、协议转换、环境变量 Key 读取及网络错误翻译均以 `server/dataProxy.js` 为准。
+
+## 错误分类与处理
+
+| 场景 | 前端表现 | 处理建议 |
+|---|---|---|
+| 浏览器到 Web 本地代理无响应 | 「本地 API 代理不可达」；不再盲目重试或建议换模型 | 按 Web 一节恢复本地服务 |
+| Android 原生 HTTP 无响应 | 「网络不可达」 | 检查设备网络与服务商地址 |
+| Electron 到内嵌服务无响应 | 「Plan Pilot 内嵌本地服务未响应」 | 重启应用；持续失败再检查应用数据目录与运行日志 |
+| 上游域名不可达、断网或地址错误 | 通常为 `(500)`，公共代理会返回更具体的网络原因 | 检查上游 baseUrl、DNS、代理与防火墙 |
+| 上游超过 60 秒 | `(500)` 超时/中止信息 | 换更快的模型，或调整 `server/dataProxy.js` 的上游超时 |
+| 未配置 API Key | 未配置提示或 `(400) Missing AI API key.` | 在设置中添加 Key，或配置对应平台的服务端环境变量 |
+| Key 无效、模型名不存在 | `(401/404)` 及上游原因 | 按上游提示修正 Key、模型名或地址 |
+
+`src/ai/callPlanningAi.js` 将传输层异常包装为带 `fatal=true` 的错误，停止后续 JSON 修复重试；原始异常保存在 `error.cause`，便于调试。HTTP 401/404 等配置错误同样是 fatal，但保留上游状态与原因。
+
+## 文件同步警告与首次加载保护
+
+Web 和 Electron 的 `usePlannerStore` 会在首次 GET 失败时进行最多 3 次尝试；重试间隔为 3 秒：
+
+1. **重试期间不解锁保存**：不会因旧 localStorage 状态提前发送 POST，也不会提前显示最终失败警告。
+2. **文件有数据**：成功水合后才允许后续保存。
+3. **文件为空且有 localStorage**：先等待初始化 POST 完成，再解锁后续保存；所有文件 POST 进入同一串行队列，避免初始化写入与后续保存竞争覆盖。
+4. **最终 GET 失败**：显示同步警告并允许继续使用本地数据；后续保存仍会尝试，以便服务恢复后自动同步。
+5. **警告可关闭、恢复会清状态**：关闭只隐藏当前提示；成功的 GET/POST 会清除 `syncIssue`，App 随后重置关闭标记，下一次故障仍可提示。保存失败会重新显示问题。
+
+这些时序由 `src/hooks/plannerSyncController.js` 协调，回归测试在 `test/plannerSyncController.test.mjs`，使用可控 fetch 与定时器，不需要浏览器或大型测试依赖。
 
 ## 相关文件
 
-- `vite.config.js` — `local-api-proxy` 插件（转发、超时、请求体上限、Key 读取）
-- `src/ai/callPlanningAi.js` — 前端 AI 调用与错误分类
-- `src/hooks/usePlannerStore.js` — 持久化与同步健康状态
-- `src/App.jsx` — 同步警告条渲染
+- `server/dataProxy.js` — Web/Electron 共用的数据与 AI/ASR API 实现
+- `vite.config.js` — Web 中间件注册
+- `electron/main.js` — Electron 内嵌服务器与桌面生命周期
+- `src/app/platform.js` / `src/app/platformMessages.js` — 平台检测与分流文案
+- `src/ai/callPlanningAi.js` / `src/ai/directAi.js` — 代理调用与 Android 直连
+- `src/hooks/usePlannerStore.js` / `src/hooks/plannerSyncController.js` — 水合、重试、同步健康状态与串行保存
+- `src/App.jsx` / `src/styles.css` — 可关闭的同步警告条
