@@ -39,7 +39,7 @@
 
 ### macOS
 
-Electron 壳，本地服务器随 App 运行，装好即用，不再依赖终端里的 dev server。数据是 JSON 文件，存在 `~/Library/Application Support/Plan Pilot/data`，与网页版同构，整目录拷贝即可迁移；API Key 在设置里重填一次。
+Electron 壳，本地服务器随 App 运行，装好即用，不再依赖终端里的 dev server。数据是 JSON 文件，存在 `~/Library/Application Support/Plan Pilot/data`，与网页版同构，整目录拷贝即可迁移；聊天与语音 API Key 在设置里填一次，由 macOS 钥匙串加密保存，重启后自动加载。
 
 Mac 版专属：置顶悬浮窗常驻显示当前时间块，点「专注」变为迷你番茄钟，可完成打卡、加十分钟、退出；时间块开始前五分钟页内提醒并推送系统通知；App 时区可选，跨时区使用时「今天」、现在线与提醒全部按所选时区运转。
 
@@ -62,6 +62,7 @@ Capacitor 壳，数据只存手机本机，AI 与语音经原生 HTTP 直连，�
 ### 2026-11-10
 
 - macOS 版上线。Electron 打包，本地服务器随 App 运行，数据存为 JSON 文件，与网页版同构、可直接迁移。
+- 修复 Mac 版重启后 API Key 消失：聊天与语音 Key 改为 macOS 钥匙串加密保存，不再受内嵌服务器随机端口变化影响；清空本地数据会同步移除两把 Key。
 - 置顶悬浮窗：常览显示当前与下一个时间块，点「专注」变为迷你番茄钟，可完成打卡、加十分钟、退出。
 - 时间块开始前五分钟与开始时刻页内提醒，App 内另发系统通知。
 - App 时区可选，默认跟随系统；跨时区使用时「今天」、现在线、倒计时与提醒都按所选时区运转。
@@ -350,7 +351,7 @@ npm run preview
 - OpenAI-compatible 服务通常会请求 `/chat/completions`。
 - Claude / Opus 使用 Anthropic Messages API。
 - 不同账号和地区可用模型名可能不同，请以供应商控制台为准。
-- API Key 只保存在当前浏览器本地，不会写入仓库，也不会出现在导出 JSON 里。
+- 网页版 API Key 只保存在当前浏览器本地；macOS 桌面版使用系统钥匙串加密保存。两种形态都不会把 Key 写入仓库或导出 JSON。
 
 ## 环境变量
 
@@ -368,7 +369,7 @@ ANTHROPIC_API_KEY=
 
 - 默认没有账号系统，没有云端数据库。
 - 计划数据保存在本机浏览器，并同步备份到项目目录下已忽略的 `data/`。
-- API Key 独立保存在当前浏览器中，不会写入计划数据、`data/` 或导出 JSON。
+- API Key 独立保存在当前浏览器中；macOS 桌面版则由系统钥匙串加密保存。Key 不会写入计划数据、`data/` 或导出 JSON。
 - 复盘画像学习默认关闭；开启后，保存复盘时会把复盘内容发送给当前选择的大模型，并将生成的画像保存在本机 `data/user-profile.json`。
 - PWA 只缓存静态资源，不缓存 `/api/*` 返回的计划数据或画像。
 - API 请求通过当前 Vite dev server 的 `/api/ai/chat` 代理转发。

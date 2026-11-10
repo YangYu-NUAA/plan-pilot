@@ -641,6 +641,13 @@ textarea {
   font-size: 12px;
 }
 
+.ai-panel p.credential-error,
+.settings-hint.credential-error {
+  color: #fecaca;
+  opacity: 1;
+  line-height: 1.5;
+}
+
 .key-status {
   display: inline-flex;
   align-items: center;

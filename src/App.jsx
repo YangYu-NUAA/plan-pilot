@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { appNow, setActiveTimeZone } from "./utils/clock.js";import {
   CalendarDays,
   ChevronRight,
@@ -108,8 +108,8 @@ function App() {
     mergeTasks: mergeDuplicateTasks,
   });
   const autoSchedulingRef = useRef(false); // 防自动安排并发（每实例，替代模块全局）—— from PR #6 (hrjtju)
-  const [localAiKey, updateLocalAiKey] = useLocalAiKey();
-  const [voiceKey, updateVoiceKey] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
+  const [localAiKey, updateLocalAiKey, aiKeyStorage] = useLocalAiKey();
+  const [voiceKey, updateVoiceKey, voiceKeyStorage] = useLocalVoiceKey(); // 语音 ASR 独立 Key（聊天 Key 之外的回落链：voiceKey → localAiKey → 服务器环境变量）
   const [serverAiKeyLoaded, setServerAiKeyLoaded] = useState(false);
   const [activeView, setActiveView] = useState("today");
   const [settingsOpen, setSettingsOpen] = useState(false); // 设置抽屉开合
@@ -1681,6 +1681,7 @@ function App() {
     }
     setPlanner(hydratePlannerState(defaultState, mergeDuplicateTasks));
     updateLocalAiKey("");
+    updateVoiceKey("");
     // Immediately persist empty state to server to clear disk files（原生壳跳过）
     if (hasLocalServer) {
       fetch("/api/data", {
@@ -1887,8 +1888,10 @@ function App() {
         applyAiProviderPreset={applyAiProviderPreset}
         localAiKey={localAiKey}
         updateLocalAiKey={updateLocalAiKey}
+        aiKeyStorage={aiKeyStorage}
         voiceKey={voiceKey}
         updateVoiceKey={updateVoiceKey}
+        voiceKeyStorage={voiceKeyStorage}
         serverAiKeyLoaded={serverAiKeyLoaded}
         aiKeyLoaded={aiKeyLoaded}
         currentAiPreset={currentAiPreset}
