@@ -86,7 +86,7 @@ function createWindow(port) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -167,7 +167,7 @@ app.whenReady().then(async () => {
     }
     floatingWin = new BrowserWindow({
       width: 300,
-      height: 170,
+      height: 216,
       resizable: true,
       alwaysOnTop: true,
       visibleOnAllWorkspaces: true,

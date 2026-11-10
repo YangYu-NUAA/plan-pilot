@@ -886,7 +886,28 @@ function App() {
   // 专注模式：聚焦某个任务时间块，全屏倒计时；完成即打卡，+10 分钟顺延块尾
   const focusBlock = focusBlockId ? planner.blocks.find((b) => b.id === focusBlockId) : null;
   const focusTask = focusBlock?.taskId ? taskById[focusBlock.taskId] : null;
+
+  // 块尾顺延（全屏专注与小窗专注共用）
+  function extendBlock(blockId, minutes) {
+    const block = planner.blocks.find((b) => b.id === blockId);
+    if (!block) return;
+    const newEnd = toTime(Math.min(24 * 60, toMinutes(block.end) + minutes));
+    patchPlanner((current) => ({
+      blocks: current.blocks.map((b) => (b.id === blockId ? { ...b, end: newEnd } : b)),
+    }));
+  }
+
+  // Electron 专注小窗的状态/遥控通道（同源 localStorage：主窗唯一写数据，小窗只发命令）
+  const FOCUS_KEY = "plan-pilot-focus";
+  const FOCUS_CMD_KEY = "plan-pilot-focus-cmd";
+
   function startFocus(blockId) {
+    // Mac App：迷你置顶窗当番茄钟，不占全屏（浏览器保持全屏 FocusOverlay）
+    if (window.planPilotNative?.openFloating) {
+      localStorage.setItem(FOCUS_KEY, JSON.stringify({ blockId }));
+      window.planPilotNative.openFloating();
+      return;
+    }
     setFocusBlockId(blockId);
   }
   function completeFocus() {
@@ -897,12 +918,37 @@ function App() {
     setFocusBlockId(null);
   }
   function extendFocus(minutes) {
-    if (!focusBlock) return;
-    const newEnd = toTime(Math.min(24 * 60, toMinutes(focusBlock.end) + minutes));
-    patchPlanner((current) => ({
-      blocks: current.blocks.map((b) => (b.id === focusBlock.id ? { ...b, end: newEnd } : b)),
-    }));
+    if (focusBlock) extendBlock(focusBlock.id, minutes);
   }
+
+  // 小窗遥控命令：完成打卡 / +10 分钟 / 退出专注
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== FOCUS_CMD_KEY || !e.newValue) return;
+      let cmd = null;
+      try { cmd = JSON.parse(e.newValue); } catch { return; }
+      localStorage.removeItem(FOCUS_CMD_KEY);
+      let focusState = null;
+      try { focusState = JSON.parse(localStorage.getItem(FOCUS_KEY) || "null"); } catch { /* ignore */ }
+      if (cmd.type === "complete" && focusState) {
+        const block = planner.blocks.find((b) => b.id === focusState.blockId);
+        const task = block?.taskId ? taskById[block.taskId] : null;
+        if (task && task.status !== "done") {
+          updateTask(task.id, { status: "done" });
+          playTick(planner.settings);
+          tapDone();
+        }
+      } else if (cmd.type === "extend" && focusState) {
+        extendBlock(focusState.blockId, 10);
+      }
+      if (cmd.type !== "extend") {
+        localStorage.removeItem(FOCUS_KEY); // 小窗退出专注，回到常览
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
 
   // —— ⌘K 命令条：全部意图在本地解析（utils/commandParse），不经过大模型 ——
   useEffect(() => {

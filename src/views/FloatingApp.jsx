@@ -1,16 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
-import { appNow } from "../utils/clock.js";import { X } from "lucide-react";
+import { AlarmClock, Check, Plus, X } from "lucide-react";
 import { getLocalDate, toMinutes } from "../utils/dateTime.js";
+import { appNow, setActiveTimeZone } from "../utils/clock.js";
 
-// Electron 原生迷你悬浮窗（#floating 入口）：只读展示当前/下一个时间块。
-// 独立 BrowserWindow 与主窗同源——数据走 /api/data 轮询（30s）+ 每秒倒计时；
-// 不做打卡等写操作，避免与主窗全量 POST 互相覆盖。
+// Electron 原生迷你窗（#floating）：两种形态。
+//  - 常览：当前/下一个时间块 + 进度（/api/data 30s 轮询，只读）
+//  - 专注：主窗发起的迷你番茄钟——状态经同源 localStorage 'plan-pilot-focus' 同步，
+//    完成/+10/退出通过 'plan-pilot-focus-cmd' 遥控主窗执行（主窗仍是唯一数据写方）
+const FOCUS_KEY = "plan-pilot-focus";
+const FOCUS_CMD_KEY = "plan-pilot-focus-cmd";
+
+function readFocus() {
+  try {
+    const raw = localStorage.getItem(FOCUS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function sendCmd(type) {
+  localStorage.setItem(FOCUS_CMD_KEY, JSON.stringify({ type, nonce: Date.now() + Math.random() }));
+}
+
 export function FloatingApp() {
   const [now, setNow] = useState(() => appNow());
   const [data, setData] = useState(null);
+  const [focus, setFocus] = useState(readFocus);
 
   useEffect(() => {
-    const tick = setInterval(() => setNow(appNow()), 1000);
+    const tick = setInterval(() => setNow(appNow()), 500);
     return () => clearInterval(tick);
   }, []);
 
@@ -19,7 +38,13 @@ export function FloatingApp() {
     const load = () => {
       fetch("/api/data")
         .then((r) => r.json())
-        .then((d) => { if (alive && d && !d.error) setData(d); })
+        .then((d) => {
+          if (!alive || !d || d.error) return;
+          setData(d);
+          // 与主窗一致：App 时区生效（迷你窗的「现在」与主窗同钟）
+          const tz = d.settings?.timezone;
+          setActiveTimeZone(tz && tz !== "auto" ? tz : null);
+        })
         .catch(() => {});
     };
     load();
@@ -27,31 +52,77 @@ export function FloatingApp() {
     return () => { alive = false; clearInterval(timer); };
   }, []);
 
-  // 与主窗同源：localStorage 共享，读同一份主题令牌
+  // 主题 + 专注状态同步（主窗写 FOCUS_KEY 时本窗收到 storage 事件）
   useEffect(() => {
     try {
       const theme = localStorage.getItem("plan-pilot-theme");
       if (theme) document.documentElement.dataset.theme = theme;
     } catch { /* ignore */ }
+    const onStorage = (e) => {
+      if (e.key === FOCUS_KEY) setFocus(readFocus());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const todayStr = getLocalDate();
   const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-  const { current, next, tasks } = useMemo(() => {
-    const blocks = (data?.blocks || [])
-      .filter((b) => b.date === todayStr)
-      .slice()
-      .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+  const { current, next, tasks, blocks } = useMemo(() => {
+    const all = (data?.blocks || []).slice().sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+    const todays = all.filter((b) => b.date === todayStr);
     return {
-      current: blocks.find((b) => toMinutes(b.start) <= nowMin && nowMin < toMinutes(b.end)) || null,
-      next: blocks.find((b) => toMinutes(b.start) > nowMin) || null,
+      current: todays.find((b) => toMinutes(b.start) <= nowMin && nowMin < toMinutes(b.end)) || null,
+      next: todays.find((b) => toMinutes(b.start) > nowMin) || null,
       tasks: data?.tasks || [],
+      blocks: all,
     };
   }, [data, todayStr, nowMin]);
 
-  const block = current || next;
   const taskById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
+
+  // —— 专注模式：迷你番茄钟 ——
+  const focusBlock = focus ? blocks.find((b) => b.id === focus.blockId) : null;
+  if (focus && focusBlock) {
+    const focusTask = focusBlock.taskId ? taskById[focusBlock.taskId] : null;
+    const title = focusTask?.title || focusBlock.title || "专注";
+    const start = toMinutes(focusBlock.start);
+    const end = toMinutes(focusBlock.end);
+    const remainSec = Math.round((end - nowMin) * 60);
+    const mm = String(Math.floor(Math.max(0, remainSec) / 60)).padStart(2, "0");
+    const ss = String(Math.max(0, remainSec) % 60).padStart(2, "0");
+    const progress = Math.min(1, Math.max(0, (nowMin - start) / Math.max(1, end - start)));
+
+    return (
+      <div className="pip-root floating-root floating-focus">
+        <div className="pip-head floating-drag">
+          <span className="pip-state is-now"><AlarmClock size={11} /> 专注中</span>
+          <span className="floating-brand">{focusBlock.start}–{focusBlock.end}</span>
+          <button type="button" className="pip-close" onClick={() => sendCmd("exit")} title="退出专注（小窗回到常览）">
+            <X size={13} />
+          </button>
+        </div>
+        <strong className="pip-title">{title}</strong>
+        <div className={`floating-clock${remainSec < 0 ? " is-overtime" : ""}`}>
+          {remainSec < 0 ? "+" : ""}{mm}:{ss}
+        </div>
+        <div className="pip-progress">
+          <i style={{ width: `${Math.round(progress * 100)}%` }} />
+        </div>
+        <div className="floating-focus-actions">
+          <button type="button" className="pip-done" onClick={() => sendCmd("complete")}>
+            <Check size={13} /> 完成
+          </button>
+          <button type="button" className="pip-extend" onClick={() => sendCmd("extend")} title="块尾顺延 10 分钟">
+            <Plus size={13} /> 10 分钟
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // —— 常览模式：当前/下一个时间块 ——
+  const block = current || next;
   const task = block?.taskId ? taskById[block.taskId] : null;
   const title = task?.title || block?.title || "";
   const isNow = Boolean(current);
@@ -87,7 +158,7 @@ export function FloatingApp() {
           </div>
         </>
       ) : (
-        <span className="pip-empty">今天暂无时间块 · 打卡请回主窗</span>
+        <span className="pip-empty">今天暂无时间块</span>
       )}
     </div>
   );
