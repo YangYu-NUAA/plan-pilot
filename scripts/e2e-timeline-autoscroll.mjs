@@ -1,5 +1,5 @@
 // E2E：时间轴拖拽自动跟随滚动（需 dev server 已在 http://127.0.0.1:5173 运行）。
-// 用法：npm run test:e2e
+// 用法：npm run test:e2e:timeline（npm run test:e2e 会依次运行全部 E2E）
 // 无 playwright 环境、或服务未启动时优雅跳过（exit 0），不影响 npm test 主链路。
 //
 // 关键设计：

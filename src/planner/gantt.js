@@ -48,6 +48,7 @@ export function buildGoalGantt(goals, tasks, todayStr) {
     visiting.add(goalId);
     const dates = [];
     (tasksByGoal[goalId] || []).forEach((t) => { if (/^\d{4}-\d{2}-\d{2}$/.test(t.date)) dates.push(t.date); });
+    const hasOwnTaskDates = dates.length > 0;
     const goalObj = goalMap[goalId];
     const startDate = goalObj?.startDate && /^\d{4}-\d{2}-\d{2}$/.test(goalObj.startDate) ? goalObj.startDate : "";
     const endDate = goalObj?.endDate && /^\d{4}-\d{2}-\d{2}$/.test(goalObj.endDate) ? goalObj.endDate : "";
@@ -66,8 +67,10 @@ export function buildGoalGantt(goals, tasks, todayStr) {
       // 单边日期补另一边（保底 1 天宽度，避免 bar 塌缩成点）
       if (startDate && !endDate) end = addDays(startDate, 1);
       else if (endDate && !startDate) start = addDays(endDate, -1);
-      const hasTasks = dates.length > 0 || childSpans.some((s) => s.derived === "tasks");
-      info = { start, end, derived: hasExplicit ? "explicit" : hasTasks ? "tasks" : "type" };
+      const hasTasks = hasOwnTaskDates || childSpans.some((s) => s.derived === "tasks");
+      const hasLinkedSpan = hasOwnTaskDates || childSpans.length > 0;
+      const derived = hasExplicit ? (hasLinkedSpan ? "mixed" : "explicit") : hasTasks ? "tasks" : "type";
+      info = { start, end, derived };
     } else {
       const type = (goalMap[goalId] && goalMap[goalId].type) || "month";
       info = { start: todayStr, end: addDays(todayStr, HORIZON[type] || 28), derived: "type" };
