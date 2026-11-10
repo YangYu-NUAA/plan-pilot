@@ -17,7 +17,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>,
 );
 
-if (!isFloating && "serviceWorker" in navigator && import.meta.env.PROD) {
+// Service Worker 只服务浏览器 PWA；Electron 原生壳禁用并清理存量注册
+// （SW 缓存旧 assets 会造成「更新不生效」的幽灵问题）
+const isElectronShell = navigator.userAgent.includes("Electron");
+if (isElectronShell) {
+  navigator.serviceWorker?.getRegistrations?.().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+} else if (!isFloating && "serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch((err) => {
       console.warn("Service Worker registration failed:", err);

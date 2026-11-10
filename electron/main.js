@@ -166,8 +166,9 @@ app.whenReady().then(async () => {
       return;
     }
     floatingWin = new BrowserWindow({
-      width: 300,
-      height: 216,
+      width: 322,
+      height: 224,
+      frame: false, // 内部已有品牌/状态行 + 拖动区，系统标题栏冗余
       resizable: true,
       alwaysOnTop: true,
       visibleOnAllWorkspaces: true,
