@@ -26,6 +26,20 @@ export function isTicketPurchaseTask(title) {
   return /购买|买票|订票|预订|查票|抢票/.test(String(title || "")) && /票|火车|高铁|车次|航班/.test(String(title || ""));
 }
 
+// 「事件类待办」：标题读起来像一段事件而非工作（会议、外出、聚餐、体检……）。
+// 自动排期时，这类任务在常规工作时段放不下后可获得豁免：允许落到工作时段之外的
+// 全日空档（如晚间）。购票/会后整理有专门的确认流，不走豁免。
+export function isEventLikeTodo(title) {
+  const s = String(title || "");
+  if (!s.trim()) return false;
+  if (isTicketPurchaseTask(s)) return false;
+  // 宽松购票守卫：动词与「票/车次/班次」相隔较远的写法（如「买明天的高铁票」）,
+  // isTicketPurchaseTask 的严格组合无法覆盖；豁免谓词内多拦一层。
+  if (/[买订抢购][^，。]{0,8}(票|车次|高铁|航班|机票)/.test(s)) return false;
+  if (isPostMeetingTask(s)) return false;
+  return isBusySentence(s);
+}
+
 // 规则抽取的保守闸门：只把「单一、清晰」的句子落成任务/时间块。
 // 关键信号是「多事件」（连接词、≥2 个阿拉伯数字时间、情绪/元描述），而不是单纯长度——
 // 一个带地点的会议可以很长但仍是一件事，必须放行；一段串联多件事的口语必须交给 LLM。
