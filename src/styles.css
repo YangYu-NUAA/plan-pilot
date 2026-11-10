@@ -3841,3 +3841,17 @@ li,
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
   color: var(--faint);
 }
+
+/* OmniBar 发送按钮：输入有内容时出现的 ↵ 圆钮（与 Enter 等价） */
+.omnibar-send {
+  display: grid; place-items: center;
+  width: 34px; height: 34px; flex-shrink: 0;
+  border: 0; border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  transition: transform .1s, filter .12s;
+}
+.omnibar-send:hover { filter: brightness(1.15); }
+.omnibar-send:active { transform: scale(0.92); }
