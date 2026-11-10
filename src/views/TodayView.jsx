@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
+import { appNow } from "../utils/clock.js";
 import { playTick } from "../utils/soundFx.js";
 import { tapDone } from "../utils/hapticsFx.js";
 import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions } from "../constants/labels.js";
@@ -256,7 +257,11 @@ export function TodayView({
       setScheduleNotice({ text: `「${name}」标题里的时间更像车次/出发时间。已填好下方表单，请手动选你真正要执行的时间再添加。`, tone: "info" });
       return;
     }
-    const slot = findSlotForTask(task, planner.settings, todayBlocks, selectedDate);
+    const currentAppTime = appNow();
+    const isToday = getLocalDate(currentAppTime) === selectedDate;
+    const nowMinutes = currentAppTime.getHours() * 60 + currentAppTime.getMinutes();
+    const notBefore = isToday ? nowMinutes : null;
+    const slot = findSlotForTask(task, planner.settings, todayBlocks, selectedDate, { notBefore });
     if (slot && addBlockDirectly({ type: "task", taskId: question.taskId, title: "", start: slot.start, end: slot.end })) {
       setScheduleQuestions((qs) => qs.filter((q) => q.id !== question.id));
       setScheduleNotice({ text: `已把「${name}」放到 ${slot.start}–${slot.end}。`, tone: "info" });
