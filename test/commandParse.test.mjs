@@ -84,3 +84,11 @@ test("日期 + 任务（无时间）", () => {
   assert.equal(t.kind, "add-task");
   assert.equal(t.date, "2026-07-27");
 });
+
+test("OmniBar 强弱意图：明确任务可本地执行，裸文本仍交给 AI", () => {
+  assert.equal(parseCommandInput("我最近有点迷茫", CTX)[0].weak, true);
+  assert.equal(parseCommandInput("写周报", CTX)[0].weak, true);
+  assert.equal(parseCommandInput("写周报 30分钟", CTX)[0].weak, false);
+  assert.equal(parseCommandInput("明天 写周报", CTX)[0].weak, false);
+  assert.equal(parseCommandInput("明天下午3点 组会", CTX)[0].weak, undefined);
+});

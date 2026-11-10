@@ -3,7 +3,7 @@ import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximiz
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { playTick } from "../utils/soundFx.js";
 import { tapDone } from "../utils/hapticsFx.js";
-import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
+import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions } from "../constants/labels.js";
 import { parseTimeInSentence } from "../planner/textExtract.js";
 import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
@@ -60,6 +60,7 @@ export function TodayView({
   scheduleTaskAtMinute,
   aiStatus,
   aiTaskSuggestions,
+  setAiTaskSuggestions,
   generateTodayAiGuide,
   acceptAiTaskSuggestions,
   planningCoach,
@@ -163,7 +164,7 @@ export function TodayView({
   // 移动端分页：规划（中枢+统计+任务）/ 时间表（独占全屏时间轴）；桌面端始终同屏
   const [mobileTab, setMobileTab] = useState("plan");
   const conversationActive =
-    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
+    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || Boolean(planningCoach.error) || conversationOpen;
 
   function changeCoachScope(value) {
     setPlanningCoach((coach) => ({
@@ -340,7 +341,7 @@ export function TodayView({
         <div className="coach-copy">
           <div>
             <p className="eyebrow">晨间问题</p>
-            <h2 style={{ color: energyColor(dayPlan.energy) }}>{formatHumanDate(selectedDate)}</h2>
+            <h2>{formatHumanDate(selectedDate)}</h2>
             {!coachExpanded && (
               <p className="coach-summary">
                 {dayPlan.morningDone ? "已保存" : dayPlan.fixed || dayPlan.topThree || dayPlan.changes ? "有未保存内容" : "未填写"}
@@ -448,8 +449,10 @@ export function TodayView({
                   </span>
                 </div>
                 <button
+                  type="button"
                   className="icon-button"
                   title="不要这条"
+                  aria-label={`不要建议：${task.title}`}
                   onClick={() => setAiTaskSuggestions((prev) => prev.filter((t) => t.id !== task.id))}
                 >
                   <X size={16} />

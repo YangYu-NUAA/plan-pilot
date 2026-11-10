@@ -43,11 +43,14 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
         return null;
       });
     }
+    function onCancel() { setDrag(null); }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
   }, [drag?.id, drag?.mode]);
 
@@ -118,6 +121,8 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
 
   function startDrag(e, block, mode) {
     if (e.button !== undefined && e.button !== 0) return;
+    // 触屏把时间块表面留给纵向滚动；精确改时间走始终可见的编辑按钮。
+    if (e.pointerType === "touch") return;
     e.preventDefault();
     setDrag({ id: block.id, mode, startY: e.clientY, origStart: toMinutes(block.start), origEnd: toMinutes(block.end), deltaMin: 0 });
   }
@@ -249,10 +254,10 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
                   <Play size={14} />
                 </button>
               )}
-              <button title="编辑" onPointerDown={(e) => e.stopPropagation()} onClick={() => onEdit(block)}>
+              <button type="button" title={`编辑 ${title}（${toTime(startMin)}–${toTime(endMin)}）`} aria-label={`编辑 ${title}，${toTime(startMin)} 到 ${toTime(endMin)}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => onEdit(block)}>
                 <Pencil size={14} />
               </button>
-              <button title="删除" onPointerDown={(e) => e.stopPropagation()} onClick={() => onDelete(block.id)}>
+              <button type="button" title="删除" aria-label={`删除 ${title}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => onDelete(block.id)}>
                 <Trash2 size={14} />
               </button>
             </div>

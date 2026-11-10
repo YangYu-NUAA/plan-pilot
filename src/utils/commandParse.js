@@ -206,11 +206,13 @@ export function parseCommandInput(raw, { selectedDate, todayStr }) {
       });
     }
   }
-  // 总是提供「仅添加任务」的退路
+  // 没有任何日期/时间/时长信号的裸文本是弱意图：⌘K 仍可显式选择，
+  // OmniBar 则交给 AI，避免把情绪或长段描述静默变成待办。
   const estimateMinutes = dur.minutes || estimateMinutesForTitle(title, 30);
+  const weak = !d.date && !t.start && !dur.minutes;
   intents.push({
     kind: "add-task",
-    date, title, estimateMinutes,
+    date, title, estimateMinutes, weak,
     label: `添加任务「${title}」`,
     hint: `${dateLabel} · 约 ${estimateMinutes} 分钟`,
   });

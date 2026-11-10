@@ -43,7 +43,7 @@ export function ReviewView({
           {unfinished.length > 0 && (
             <button className="secondary-action" onClick={carryUnfinished}>
               <RefreshCw size={18} />
-              未完成顺延
+              顺延 {unfinished.length} 项到明天
             </button>
           )}
         </div>

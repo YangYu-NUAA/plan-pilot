@@ -202,6 +202,17 @@ function App() {
     setScheduleNotice({ text: "", tone: "" });
   }, [selectedDate]);
 
+  // 复盘按日期隔离：切换日期时载入当天已有内容，避免把昨天的草稿写进今天。
+  useEffect(() => {
+    const dailyReview = planner.reviews.find((review) => review.date === selectedDate && review.type === "daily");
+    setReviewDraft({
+      completed: dailyReview?.completed || "",
+      blockers: dailyReview?.blockers || "",
+      adjustments: dailyReview?.adjustments || "",
+      tomorrowFocus: dailyReview?.tomorrowFocus || "",
+    });
+  }, [selectedDate, planner.reviews]);
+
   // App 时区：设置变化即时生效（全站 getLocalDate/appNow 经 clock.js 统一读取）
   useEffect(() => {
     const tz = planner.settings.timezone;
@@ -1809,17 +1820,18 @@ function App() {
 
   function carryUnfinished() {
     const tomorrow = addDays(selectedDate, 1);
+    const count = planner.tasks.filter((task) => task.date === selectedDate && task.status !== "done").length;
+    if (!count) return;
+    const confirmed = window.confirm(`将 ${count} 个未完成任务顺延到 ${tomorrow}？\n仅移除这些任务在今天的关联时间块，固定安排和已完成任务保持不变。`);
+    if (!confirmed) return;
+
     patchPlanner((current) => {
-      const updatedTasks = current.tasks.map((task) =>
-        task.date === selectedDate && task.status !== "done"
-          ? { ...task, date: tomorrow, status: "open" }
-          : task,
+      const carriedIds = new Set(
+        current.tasks.filter((task) => task.date === selectedDate && task.status !== "done").map((task) => task.id),
       );
       return {
-        tasks: updatedTasks,
-        blocks: current.blocks.filter(
-          (block) => block.date !== selectedDate || updatedTasks.find((t) => t.id === block.taskId)?.status === "done",
-        ),
+        tasks: current.tasks.map((task) => carriedIds.has(task.id) ? { ...task, date: tomorrow, status: "open" } : task),
+        blocks: current.blocks.filter((block) => block.date !== selectedDate || !carriedIds.has(block.taskId)),
       };
     });
     setSelectedDate(tomorrow);
@@ -1840,18 +1852,23 @@ function App() {
         <nav className="rail-nav">
           <button className={activeView === "now" ? "active" : ""} data-tip="当下" aria-label="当下" onClick={() => setActiveView("now")}>
             <Zap size={20} />
+            <span className="rail-label">当下</span>
           </button>
           <button className={activeView === "today" ? "active" : ""} data-tip="今日" aria-label="今日" onClick={() => setActiveView("today")}>
             <CalendarDays size={20} />
+            <span className="rail-label">今日</span>
           </button>
           <button className={activeView === "goals" ? "active" : ""} data-tip="目标" aria-label="目标" onClick={() => setActiveView("goals")}>
             <Target size={20} />
+            <span className="rail-label">目标</span>
           </button>
           <button className={activeView === "review" ? "active" : ""} data-tip="复盘" aria-label="复盘" onClick={() => setActiveView("review")}>
             <ListChecks size={20} />
+            <span className="rail-label">复盘</span>
           </button>
           <button data-tip="命令条 ⌘K" aria-label="命令条" onClick={() => setCmdOpen(true)}>
             <CommandIcon size={20} />
+            <span className="rail-label">命令</span>
           </button>
         </nav>
         <button
@@ -1861,6 +1878,7 @@ function App() {
           onClick={() => setSettingsOpen((open) => !open)}
         >
           <Settings size={20} />
+          <span className="rail-label">设置</span>
         </button>
       </aside>
 
@@ -1906,12 +1924,13 @@ function App() {
             <p className="eyebrow">{activeView === "now" ? "现在该做什么" : activeView === "today" ? "今日引导" : activeView === "goals" ? "目标层级" : "收束调整"}</p>
             <h1>{viewHeadline}</h1>
           </div>
+          {(activeView === "today" || activeView === "review") && (
           <div className="date-switcher">
-            <button title="前一天" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+            <button title="前一天" aria-label="前一天" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
               <ChevronRight className="flip" size={18} />
             </button>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
-            <button title="后一天" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+            <input type="date" aria-label="选择规划日期" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            <button title="后一天" aria-label="后一天" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
               <ChevronRight size={18} />
             </button>
             {selectedDate !== getLocalDate() && (
@@ -1920,6 +1939,7 @@ function App() {
               </button>
             )}
           </div>
+          )}
         </header>
 
         <ErrorBoundary>
@@ -1989,6 +2009,7 @@ function App() {
             scheduleTaskAtMinute={scheduleTaskAtMinute}
             aiStatus={aiStatus}
             aiTaskSuggestions={aiTaskSuggestions}
+            setAiTaskSuggestions={setAiTaskSuggestions}
             generateTodayAiGuide={generateTodayAiGuide}
             acceptAiTaskSuggestions={acceptAiTaskSuggestions}
             planningCoach={planningCoach}

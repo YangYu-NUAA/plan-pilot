@@ -17,7 +17,7 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
   const todayStr = getLocalDate();
   const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-  const { current, next, remaining, doneCount, totalCount } = useMemo(() => {
+  const { current, next, remaining, doneCount, totalCount, hasBlocks } = useMemo(() => {
     const blocks = sortBlocks(planner.blocks.filter((b) => b.date === todayStr));
     const cur = blocks.find((b) => nowMin >= toMinutes(b.start) && nowMin < toMinutes(b.end)) || null;
     const nxt = blocks.find((b) => toMinutes(b.start) > nowMin) || null;
@@ -29,6 +29,7 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
       remaining: rem,
       doneCount: todayTasks.filter((t) => t.status === "done").length,
       totalCount: todayTasks.length,
+      hasBlocks: blocks.length > 0,
     };
   }, [planner.blocks, planner.tasks, todayStr, nowMin]);
 
@@ -61,15 +62,21 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
           </div>
           <div className="now-actions">
             {currentTask && (
-              <button type="button" className="now-btn primary" onClick={() => onToggleTask(currentTask.id)}>
+              <button
+                type="button"
+                className={`now-btn ${currentTask.status === "done" ? "secondary" : "primary"}`}
+                onClick={() => onToggleTask(currentTask.id)}
+              >
                 <Check size={22} />
-                完成
+                {currentTask.status === "done" ? "恢复未完成" : "完成"}
               </button>
             )}
-            <button type="button" className="now-btn secondary" onClick={() => onStartFocus(current.id)}>
-              <Play size={20} />
-              专注
-            </button>
+            {currentTask && currentTask.status !== "done" && (
+              <button type="button" className="now-btn secondary" onClick={() => onStartFocus(current.id)}>
+                <Play size={20} />
+                专注
+              </button>
+            )}
           </div>
         </section>
       ) : next ? (
@@ -89,12 +96,14 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
       ) : (
         <section className="now-hero is-idle">
           <Illustration name="compass" size={64} />
-          <h2 className="now-title">今天没有安排时间块</h2>
-          <p className="now-time">说一句话，让 AI 帮你把今天排出来</p>
+          <h2 className="now-title">{hasBlocks ? "今天的时间块已结束" : "今天还没有时间块"}</h2>
+          <p className="now-time">
+            {hasBlocks ? "去今日视图查看完成情况，或为下一天留出从容的起点。" : "先写下一件具体的小事，不需要从完美计划开始。"}
+          </p>
           <div className="now-actions">
             <button type="button" className="now-btn primary" onClick={onGoToday}>
               <ArrowRight size={20} />
-              去规划
+              {hasBlocks ? "查看今日" : "开始规划"}
             </button>
           </div>
         </section>
