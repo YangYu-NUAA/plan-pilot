@@ -35,6 +35,7 @@ import { playTick } from "./utils/soundFx.js";
 import { tapDone } from "./utils/hapticsFx.js";
 import { useLocalAiKey } from "./hooks/useLocalAiKey.js";
 import { useLocalVoiceKey } from "./hooks/useLocalVoiceKey.js";
+import { useBlockReminders } from "./hooks/useBlockReminders.js";
 import { hydratePlannerState, usePlannerStore } from "./hooks/usePlannerStore.js";
 import { hasLocalServer } from "./app/platform.js";
 import { uid } from "./utils/ids.js";
@@ -163,6 +164,8 @@ function App() {
   const [scheduleNotice, setScheduleNotice] = useState({ text: "", tone: "" }); // 时间分配面板的就地反馈（成功/被规则拦截的原因）
   const [scheduleQuestions, setScheduleQuestions] = useState([]);
   const [focusBlockId, setFocusBlockId] = useState(null); // 专注模式：正在聚焦的时间块 id
+  // 块前提醒：开始前 5 分钟 + 开始时刻，页内浮层（Electron 壳内另发系统通知）
+  const [blockReminder, dismissBlockReminder] = useBlockReminders({ blocks: planner.blocks, settings: planner.settings });
   const [planningCoach, setPlanningCoach] = useState({
     scope: "today",
     messages: [],
@@ -1766,6 +1769,12 @@ function App() {
 
   return (
     <main className="app-shell">
+      {blockReminder && (
+        <div className={`app-reminder${blockReminder.id.endsWith("start") ? " is-start" : ""}`} role="status">
+          {blockReminder.text}
+          <button type="button" aria-label="关闭提醒" onClick={dismissBlockReminder}>×</button>
+        </div>
+      )}
       <aside className="rail">
         <span className="brand-mark" title={APP_NAME}>
           <BrandMark size={20} />

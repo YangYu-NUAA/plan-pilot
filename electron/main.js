@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, session, shell } from "electron";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -86,6 +86,7 @@ function createWindow(port) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -156,6 +157,31 @@ app.whenReady().then(async () => {
   const port = await startLocalServer();
   console.log(`[plan-pilot] local server on http://127.0.0.1:${port} | data: ${DATA_DIR}`);
   createWindow(port);
+
+  // 原生迷你悬浮窗：Document PiP 在 Electron 不可用，用置顶小窗替代（#floating 只读视图）
+  let floatingWin = null;
+  ipcMain.on("pp:open-floating", () => {
+    if (floatingWin && !floatingWin.isDestroyed()) {
+      floatingWin.focus();
+      return;
+    }
+    floatingWin = new BrowserWindow({
+      width: 300,
+      height: 170,
+      resizable: true,
+      alwaysOnTop: true,
+      visibleOnAllWorkspaces: true,
+      fullscreenable: false,
+      title: "Plan Pilot 悬浮窗",
+      backgroundColor: "#fffefb",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    floatingWin.loadURL(`http://127.0.0.1:${port}/#floating`);
+    floatingWin.on("closed", () => { floatingWin = null; });
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(port);

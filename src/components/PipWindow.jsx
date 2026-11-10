@@ -3,10 +3,13 @@ import { createPortal } from "react-dom";
 import { Check, PictureInPicture2, X } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../utils/dateTime.js";
 
-// Document Picture-in-Picture 悬浮窗：始终置顶的迷你面板，
-// 显示当前/下一个时间块 + 进度 + 完成按钮。Chrome/Edge 支持，
-// 不支持的浏览器直接隐藏入口（feature-detect）。
-export const pipSupported = typeof window !== "undefined" && "documentPictureInPicture" in window;
+// Document Picture-in-Picture 悬浮窗（浏览器）：始终置顶的迷你面板，
+// 显示当前/下一个时间块 + 进度 + 完成按钮。Chrome/Edge 支持。
+// Electron（macOS 壳）没有该 API：由 preload 注入 planPilotNative.openFloating，
+// 主进程开原生置顶小窗（#floating 只读视图）——两条通道都不可用才隐藏入口。
+const nativeFloating = typeof window !== "undefined" && Boolean(window.planPilotNative?.openFloating);
+export const pipSupported =
+  (typeof window !== "undefined" && "documentPictureInPicture" in window) || nativeFloating;
 
 function PipContent({ current, next, taskById, onCompleteTask, onClose }) {
   const [now, setNow] = useState(() => new Date());
@@ -74,6 +77,11 @@ export function PipWindow({ blocks, taskById, selectedDate, onCompleteTask }) {
 
   async function openPip() {
     if (!pipSupported) return;
+    // Electron 原生通道：主进程开/聚焦置顶小窗（独立只读窗口，无需 portal）
+    if (nativeFloating) {
+      window.planPilotNative.openFloating();
+      return;
+    }
     try {
       const win = await window.documentPictureInPicture.requestWindow({ width: 280, height: 148 });
       // 把主文档的样式表复制进 PiP 窗口，保持令牌/主题一致
@@ -131,7 +139,7 @@ export function PipWindow({ blocks, taskById, selectedDate, onCompleteTask }) {
         onClick={pipWin ? closePip : openPip}
       >
         <PictureInPicture2 size={16} />
-        {pipWin ? "收起悬浮窗" : "悬浮窗"}
+        {nativeFloating ? "悬浮窗" : pipWin ? "收起悬浮窗" : "悬浮窗"}
       </button>
       {pipWin &&
         createPortal(
