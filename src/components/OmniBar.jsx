@@ -106,6 +106,17 @@ export function OmniBar({
             <option value="long">长期</option>
           </select>
         )}
+        {input.trim() && (
+          <button
+            type="button"
+            className="omnibar-send"
+            title="发送（Enter）"
+            aria-label="发送"
+            onClick={() => submit(input)}
+          >
+            ↵
+          </button>
+        )}
         <button
           type="button"
           className="omnibar-ai"
@@ -119,7 +130,6 @@ export function OmniBar({
         >
           <Sparkles size={15} />
         </button>
-        <kbd>↵</kbd>
       </div>
       {voiceState === "recording" && <div className="omnibar-status is-live">正在录音——说完再点一次麦克风结束</div>}
       {voiceState === "transcribing" && <div className="omnibar-status">识别中…</div>}

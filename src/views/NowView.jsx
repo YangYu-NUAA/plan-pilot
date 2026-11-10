@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarClock, Check, Play } from "lucide-react";
+import { appNow } from "../utils/clock.js";import { ArrowRight, CalendarClock, Check, Play } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../utils/dateTime.js";
 import { sortBlocks } from "../planner/scheduling.js";
 import { MetricRing } from "../components/ui/Metric.jsx";
@@ -8,9 +8,9 @@ import { Illustration } from "../components/ui/Illustration.jsx";
 // 「当下」视图：打开手机第一眼只要一个答案——现在该做什么。
 // 大字号当前块 + 剩余倒计时 + 完成/专注大按钮；下面是今日剩余进程。
 export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocus, onGoToday }) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => appNow());
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setNow(appNow()), 1000);
     return () => clearInterval(timer);
   }, []);
 

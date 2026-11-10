@@ -16,6 +16,8 @@ export const defaultState = {
     voiceAsrModel: "stepaudio-2.5-asr",
     // 语音识别完成后自动发送/执行（关闭则文字落入输入框待确认）
     voiceAutoSend: true,
+    // App 时区：auto=跟随系统；否则 IANA 名（如 Asia/Shanghai），全站真实时间按它运转
+    timezone: "auto",
   },
   ai: {
     enabled: true,

@@ -173,6 +173,31 @@ export function SettingsDrawer({
             打卡音效（完成时一声轻响）
           </label>
           <label className="settings-span-2">
+            App 时区
+            <select
+              value={planner.settings.timezone || "auto"}
+              onChange={(event) =>
+                patchPlanner((current) => ({
+                  settings: { ...current.settings, timezone: event.target.value },
+                }))
+              }
+            >
+              <option value="auto">跟随系统时区</option>
+              <option value="Asia/Shanghai">中国标准时间（北京）</option>
+              <option value="Asia/Tokyo">日本时间（东京）</option>
+              <option value="Asia/Hong_Kong">香港时间</option>
+              <option value="Asia/Singapore">新加坡时间</option>
+              <option value="Europe/London">英国时间（伦敦）</option>
+              <option value="Europe/Paris">中欧时间（巴黎/柏林）</option>
+              <option value="America/New_York">美国东部时间（纽约）</option>
+              <option value="America/Chicago">美国中部时间（芝加哥）</option>
+              <option value="America/Los_Angeles">美国西部时间（洛杉矶）</option>
+              <option value="Australia/Sydney">澳大利亚东部时间（悉尼）</option>
+              <option value="UTC">协调世界时（UTC）</option>
+            </select>
+            <span className="settings-hint">今天的日期、「现在」线、当下视图与块前提醒都按此时区运转；改完回到今日视图即可看到「现在」线移动</span>
+          </label>
+          <label className="settings-span-2">
             语音识别方式
             <select
               value={planner.settings.voiceEngine || "stepfun"}

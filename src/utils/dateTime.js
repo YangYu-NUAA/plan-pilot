@@ -1,4 +1,6 @@
-export function getLocalDate(date = new Date()) {
+import { appNow } from "./clock.js";
+
+export function getLocalDate(date = appNow()) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
