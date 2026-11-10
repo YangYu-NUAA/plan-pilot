@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { appNow } from "../utils/clock.js";import { X } from "lucide-react";
 import { getLocalDate, toMinutes } from "../utils/dateTime.js";
 
 // Electron 原生迷你悬浮窗（#floating 入口）：只读展示当前/下一个时间块。
 // 独立 BrowserWindow 与主窗同源——数据走 /api/data 轮询（30s）+ 每秒倒计时；
 // 不做打卡等写操作，避免与主窗全量 POST 互相覆盖。
 export function FloatingApp() {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => appNow());
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const tick = setInterval(() => setNow(new Date()), 1000);
+    const tick = setInterval(() => setNow(appNow()), 1000);
     return () => clearInterval(tick);
   }, []);
 

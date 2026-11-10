@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { appNow } from "../utils/clock.js";import { createPortal } from "react-dom";
 import { Check, PictureInPicture2, X } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../utils/dateTime.js";
 
@@ -12,9 +12,9 @@ export const pipSupported =
   (typeof window !== "undefined" && "documentPictureInPicture" in window) || nativeFloating;
 
 function PipContent({ current, next, taskById, onCompleteTask, onClose }) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => appNow());
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000 * 10);
+    const timer = setInterval(() => setNow(appNow()), 1000 * 10);
     return () => clearInterval(timer);
   }, []);
 
@@ -119,7 +119,7 @@ export function PipWindow({ blocks, taskById, selectedDate, onCompleteTask }) {
 
   const todayStr = getLocalDate();
   const isToday = selectedDate === todayStr;
-  const now = new Date();
+  const now = appNow();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const sorted = blocks
     .filter((b) => b.date === selectedDate)

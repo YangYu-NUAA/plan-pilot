@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
+import { appNow, setActiveTimeZone } from "./utils/clock.js";import {
   CalendarDays,
   ChevronRight,
   Clock3,
@@ -201,6 +201,12 @@ function App() {
     setScheduleUndo(null);
     setScheduleNotice({ text: "", tone: "" });
   }, [selectedDate]);
+
+  // App 时区：设置变化即时生效（全站 getLocalDate/appNow 经 clock.js 统一读取）
+  useEffect(() => {
+    const tz = planner.settings.timezone;
+    setActiveTimeZone(tz && tz !== "auto" ? tz : null);
+  }, [planner.settings.timezone]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -913,7 +919,7 @@ function App() {
   // 当前正在进行、或今天下一个可专注的任务块
   function findFocusCandidate() {
     const today = getLocalDate();
-    const now = new Date();
+    const now = appNow();
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const candidates = planner.blocks
       .filter((b) => b.date === today && b.type !== "busy")

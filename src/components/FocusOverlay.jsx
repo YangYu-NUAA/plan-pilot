@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Plus, X } from "lucide-react";
+import { appNow } from "../utils/clock.js";import { Check, Plus, X } from "lucide-react";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 import { toMinutes } from "../utils/dateTime.js";
 import { isNative } from "../app/platform.js";
@@ -10,10 +10,10 @@ import { tapSuccess } from "../utils/hapticsFx.js";
 export function FocusOverlay({ task, block, goalTitle, onComplete, onExtend, onExit }) {
   const startMin = toMinutes(block.start);
   const endMin = toMinutes(block.end);
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => appNow());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setNow(appNow()), 1000);
     return () => clearInterval(timer);
   }, []);
 

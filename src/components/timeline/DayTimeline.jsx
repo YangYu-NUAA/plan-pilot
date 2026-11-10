@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckSquare, Pencil, Play, Square, Trash2 } from "lucide-react";
+import { appNow } from "../../utils/clock.js";import { CheckSquare, Pencil, Play, Square, Trash2 } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../../utils/dateTime.js";
 import { isMeetingSentence } from "../../planningSemantics.js";
 import { estimateMinutesForTitle } from "../../planner/textExtract.js";
@@ -57,7 +57,7 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
     if (fitAll) return;
     const el = rootRef.current;
     if (!el) return;
-    const now = new Date();
+    const now = appNow();
     const focusMin =
       selectedDate === getLocalDate()
         ? now.getHours() * 60 + now.getMinutes()
@@ -95,7 +95,7 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
   const totalMin = dayEnd - dayStart;
   const hours = [];
   for (let m = dayStart; m < dayEnd; m += 60) hours.push(m);
-  const nowDate = new Date();
+  const nowDate = appNow();
   const nowMin = selectedDate === getLocalDate() ? nowDate.getHours() * 60 + nowDate.getMinutes() : null;
 
   // 外部任务拖入的「幽灵块」：实时预览落下后的样子——15 分钟吸附、
