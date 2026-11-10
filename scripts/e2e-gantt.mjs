@@ -1,5 +1,5 @@
 // 目标甘特图 E2E：按钮/滚轮缩放时间刻度、拖拽 bar 平移起止日期、无关交互零回归。
-// 运行：npm run test:e2e:gantt（需 dev server 已在 5173）。
+// 运行：npm run test:e2e:gantt（需 dev server 已在 5173，且 Playwright/Chromium 可用）。
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";

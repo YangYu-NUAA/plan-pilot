@@ -2,7 +2,7 @@
 // 约定：一切以「天」为单位的整数偏移相对 contentMin（内容最早日期）表达；ISO 日期的换算由组件层用 addDays 完成。
 
 // 缩放档位（可视天数）。放大 = 更少天 / 缩小 = 更多天。
-export const GANTT_ZOOM_STEPS = [14, 30, 60, 90, 180, 365, 730];
+export const GANTT_ZOOM_STEPS = [14, 30, 60, 90, 180, 365, 730, 1825];
 export const GANTT_ZOOM_MIN_DAYS = 7;
 export const GANTT_ZOOM_MAX_DAYS = 1825;
 

@@ -3,6 +3,7 @@ import { Pencil, Target, Trash2, ZoomIn, ZoomOut, Scan } from "lucide-react";
 import { addDays, dayDiff, formatShortDate, getLocalDate } from "../../utils/dateTime.js";
 import { goalTypeLabel } from "../../constants/labels.js";
 import { buildGoalGantt } from "../../planner/gantt.js";
+import { getGanttDragUpdate, isGanttBarMovable } from "../../planner/ganttDrag.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
 import {
   GANTT_ZOOM_MIN_DAYS,
@@ -88,8 +89,9 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
     setZoom((z) => {
       const curSpan = z ? z.span : Math.max(1, contentRef.current.days);
       const curWindow = z || { startOff: 0, span: Math.max(1, contentRef.current.days) };
+      if ((dir < 0 && curSpan <= GANTT_ZOOM_MIN_DAYS) || (dir > 0 && curSpan >= GANTT_ZOOM_MAX_DAYS)) return z;
       const newSpan = stepZoom(curSpan, dir);
-      if (newSpan === curSpan && z && z.span === newSpan) return z;
+      if (newSpan === curSpan) return z;
       return { startOff: zoomAnchorOffset(curWindow, newSpan, anchorRatio), span: newSpan };
     });
   }, []);
@@ -129,12 +131,9 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
     return () => root.removeEventListener("wheel", onWheel);
   }, [applyZoomStep, goals.length > 0]); // 空列表分支与正常分支切换时会替换 .gantt 节点，需重绑
 
-  // —— 条拖拽（仅限显式设定了起止日期的目标）：整体平移，保持时长，按天对齐 ——
-  function barMovable(goal, span) {
-    return Boolean(span.derived === "explicit" && goal.startDate && goal.endDate);
-  }
+  // —— 条拖拽（仅限纯显式起止日期）：整体平移，保持时长，按天对齐 ——
   function handleBarPointerDown(e, goal, span) {
-    if (e.button !== 0 || !barMovable(goal, span)) return;
+    if (e.button !== 0 || !isGanttBarMovable(goal, span)) return;
     const trackEl = e.currentTarget.closest(".gantt-track");
     if (!trackEl) return;
     barDrag.current = {
@@ -159,17 +158,22 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
       e.currentTarget.style.setProperty("--bar-shift", `${shift * pxPerDay}px`); // 预览用 CSS 变量位移，不触发重渲染
     }
   }
-  function handleBarPointerUp(e) {
+  function handleBarPointerEnd(e, eventType) {
     const drag = barDrag.current;
     e.currentTarget?.style.removeProperty("--bar-shift");
     if (!drag) return;
     barDrag.current = null;
     setBarDraggingGoalId(null);
-    if (drag.shift === 0) return;
-    updateGoal(drag.goalId, {
-      startDate: addDays(drag.origStart, drag.shift),
-      endDate: addDays(drag.origEnd, drag.shift),
-    });
+    const update = getGanttDragUpdate(drag, eventType, addDays);
+    if (!update) return;
+    const { goalId, ...dates } = update;
+    updateGoal(goalId, dates);
+  }
+  function handleBarPointerUp(e) {
+    handleBarPointerEnd(e, "pointerup");
+  }
+  function handleBarPointerCancel(e) {
+    handleBarPointerEnd(e, "pointercancel");
   }
 
   if (!goals.length) {
@@ -187,7 +191,7 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
     <section className="panel goal-gantt-panel">
       <div className="section-heading">
         <h2>目标甘特图</h2>
-        <span className="gantt-hint">跨度按关联任务的日期范围；无任务的目标按类型给默认区间（虚线条）</span>
+        <span className="gantt-hint">纯手动起止日期可按天拖动；含关联任务或子目标的混合跨度不可拖；无任务目标按类型估算（虚线）</span>
         <div className="gantt-zoom-tools" role="group" aria-label="时间刻度缩放">
           {zoom && (
             <button className="icon-button" title="重置为适应内容" onClick={() => setZoom(null)}>
@@ -198,7 +202,7 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
             className="icon-button"
             title="放大时间刻度（看得更细）"
             aria-label="放大时间刻度"
-            disabled={Boolean(zoom) && zoom.span <= GANTT_ZOOM_MIN_DAYS}
+            disabled={viewDays <= GANTT_ZOOM_MIN_DAYS}
             onClick={() => applyZoomStep(-1)}
           >
             <ZoomIn size={16} />
@@ -207,7 +211,7 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
             className="icon-button"
             title="缩小时间刻度（看更多天）"
             aria-label="缩小时间刻度"
-            disabled={Boolean(zoom) && zoom.span >= GANTT_ZOOM_MAX_DAYS}
+            disabled={viewDays >= GANTT_ZOOM_MAX_DAYS}
             onClick={() => applyZoomStep(1)}
           >
             <ZoomOut size={16} />
@@ -348,21 +352,28 @@ export function GoalGantt({ goals, tasks, goalById, updateGoal, deleteGoal }) {
                     const rawWidth = Math.max(2.5, ((dayDiff(span.start, span.end) + 1) / viewDays) * 100);
                     const vis = clipBarToViewport(rawLeft, rawWidth);
                     if (!vis) return null; // 完全在窗口外（缩放后正常）
-                    const movable = barMovable(goal, span);
+                    const movable = isGanttBarMovable(goal, span);
+                    const sourceLabel = span.derived === "explicit"
+                      ? "手动指定"
+                      : span.derived === "mixed"
+                        ? "手动日期 + 关联任务/子目标"
+                        : span.derived === "tasks" ? "按关联任务" : "按类型估算";
                     const moveHint = movable
                       ? "拖动平移起止日期（时长不变）"
-                      : span.derived === "tasks"
-                        ? "跨度由关联任务决定，不可拖拽；在编辑中手动指定开始/结束后可拖动"
-                        : "无手动日期范围，在编辑中设置开始/结束日期后即可拖动";
+                      : span.derived === "mixed"
+                        ? "混合跨度包含关联任务或子目标，不可整体拖动；请分别调整目标日期或子项"
+                        : span.derived === "tasks"
+                          ? "跨度由关联任务决定，不可拖拽；请调整关联任务日期"
+                          : "无手动日期范围，在编辑中设置开始/结束日期后即可拖动";
                     return (
                       <div
-                        className={`gantt-bar status-${goal.status} priority-${goal.priority}${span.derived === "type" ? " estimated" : ""}${span.derived === "explicit" ? " explicit" : ""}${movable ? " is-movable" : ""}${barDraggingGoalId === goal.id ? " is-dragging" : ""}`}
+                        className={`gantt-bar status-${goal.status} priority-${goal.priority}${span.derived === "type" ? " estimated" : ""}${span.derived === "explicit" ? " explicit" : ""}${span.derived === "mixed" ? " mixed" : ""}${movable ? " is-movable" : ""}${barDraggingGoalId === goal.id ? " is-dragging" : ""}`}
                         style={{ left: `${vis.left}%`, width: `${vis.width}%` }}
-                        title={`${span.start} → ${span.end}（${span.derived === "explicit" ? "手动指定" : span.derived === "tasks" ? "按关联任务" : "按类型估算"}）· ${moveHint}`}
+                        title={`${span.start} → ${span.end}（${sourceLabel}）· ${moveHint}`}
                         onPointerDown={movable ? (e) => handleBarPointerDown(e, goal, span) : undefined}
                         onPointerMove={movable ? handleBarPointerMove : undefined}
                         onPointerUp={movable ? handleBarPointerUp : undefined}
-                        onPointerCancel={movable ? handleBarPointerUp : undefined}
+                        onPointerCancel={movable ? handleBarPointerCancel : undefined}
                       >
                         <span className="gantt-bar-fill" style={{ width: `${progress}%` }} />
                         <span className="gantt-bar-pct">{progress}%</span>

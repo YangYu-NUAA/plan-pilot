@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   GANTT_ZOOM_MIN_DAYS,
   GANTT_ZOOM_MAX_DAYS,
+  GANTT_ZOOM_STEPS,
   clampZoomSpan,
   stepZoom,
   zoomAnchorOffset,
@@ -35,15 +36,18 @@ test("stepZoom：沿档位阶梯放大（-1）", () => {
 test("stepZoom：沿档位阶梯缩小（+1）", () => {
   assert.equal(stepZoom(60, 1), 90);
   assert.equal(stepZoom(30, 1), 60);
-  assert.equal(stepZoom(730, 1), 730); // 已是最大档位，保持不动
+  assert.equal(stepZoom(730, 1), 1825); // 730 后仍可到达声明的最大档位
   assert.equal(stepZoom(20, 1), 30); // 非档位值向上归档
 });
 
-test("stepZoom：边界保持不动", () => {
+test("stepZoom：档位端点与 MIN/MAX 一致，边界保持不动", () => {
   const min = GANTT_ZOOM_MIN_DAYS;
+  const max = GANTT_ZOOM_MAX_DAYS;
+  assert.equal(GANTT_ZOOM_STEPS.at(-1), max);
   assert.equal(stepZoom(min, -1), min);
-  const max = clampZoomSpan(GANTT_ZOOM_MAX_DAYS);
   assert.equal(stepZoom(max, 1), max);
+  assert.equal(stepZoom(max, -1), 730);
+  assert.equal(stepZoom(731, 1), max);
 });
 
 test("zoomAnchorOffset：锚点日期在缩放前后基本不变", () => {

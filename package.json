@@ -31,6 +31,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test test/*.test.mjs",
+    "test:e2e:gantt": "node scripts/e2e-gantt.mjs",
     "electron:dev": "npm run build && electron .",
     "mac:build": "npm run build && electron-builder --mac"
   },
