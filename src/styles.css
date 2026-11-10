@@ -3896,3 +3896,18 @@ li,
   font-size: 12.5px; font-weight: 700; cursor: pointer;
 }
 .pip-extend:hover { color: var(--ink); border-color: var(--ink); }
+/* 文件同步不可用的警告条（AI 诊断化配套）：可关闭、不影响布局 */
+.sync-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger-ink);
+}
+
