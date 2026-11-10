@@ -42,9 +42,10 @@ const pwLoader = makeBrowser();
 
 async function openSeededGoalsPage(browser) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-  // 隔离文件后端：拦截 /api/data 避免 GET 覆盖种子
+  // 隔离文件后端：返回成功的空文件，GET 不覆盖种子，同时让初始化 POST 正常完成。
+  // 不应持续 503：新版同步保护会在重试期间禁止 localStorage 写回，脚本应测试正常保存链路。
   await ctx.route("**/api/data", (route) =>
-    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "e2e-isolated" }) }),
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
   );
   const now = new Date();
   const iso = (offsetDays) => {
