@@ -391,6 +391,8 @@ export function normalizeAiScheduleResult(result, { tasks, existingBlocks, setti
     const meetingEnd = isPostMeetingTask(task.title) ? meetingEndForTask(task.title, manualBlocks) : null;
     if (isPostMeetingTask(task.title) && (!meetingEnd || toMinutes(start) < meetingEnd)) return;
     if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(requestedEnd) || toMinutes(requestedEnd) <= toMinutes(start)) return;
+    // 当前时间下限对所有 AI 块生效；事件类只能豁免工作时段，不能豁免 notBefore。
+    if (typeof notBefore === "number" && toMinutes(start) < notBefore) return;
     const estimateMinutes = estimateMinutesForTitle(task.title, Number(task.estimateMinutes) || duration(start, requestedEnd));
     const end = toTime(toMinutes(start) + estimateMinutes);
 

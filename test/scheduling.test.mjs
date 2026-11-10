@@ -5,6 +5,8 @@ import {
   buildAutoBlocks,
   findSlotForTask,
 } from "../src/planner/scheduling.js";
+import { appNow, setActiveTimeZone } from "../src/utils/clock.js";
+import { getLocalDate, toMinutes } from "../src/utils/dateTime.js";
 
 const today = "2026-08-26";
 
@@ -114,4 +116,38 @@ test("findSlotForTask：无 notBefore 时不限制", () => {
     today,
   );
   assert.equal(slot.start, "09:00");
+});
+
+test("App 时区：同一真实时刻按所选时区计算排程日期与当前分钟", () => {
+  const realNow = new Date("2026-11-10T16:30:00Z");
+  const cases = [
+    { timezone: "Asia/Shanghai", date: "2026-11-11", start: "00:30", notBefore: 30 },
+    { timezone: "America/New_York", date: "2026-11-10", start: "11:30", notBefore: 690 },
+  ];
+
+  try {
+    for (const scenario of cases) {
+      setActiveTimeZone(scenario.timezone);
+      // 与 App / TodayView 使用同一个 appNow 快照，避免跨午夜时日期和分钟取自不同时刻。
+      const currentAppTime = appNow(realNow);
+      const selectedDate = getLocalDate(currentAppTime);
+      const notBefore = currentAppTime.getHours() * 60 + currentAppTime.getMinutes();
+      assert.equal(selectedDate, scenario.date);
+      assert.equal(notBefore, scenario.notBefore);
+
+      const result = buildAutoBlocks({
+        tasks: [{ id: "t-tz", title: "写论文", date: selectedDate, estimateMinutes: 60, priority: "high", kind: "normal", status: "todo", fixedTime: false }],
+        existingBlocks: [],
+        settings: { ...settings, workSegments: [{ start: "00:00", end: "23:59" }] },
+        selectedDate,
+        notBefore,
+      });
+      const block = result.blocks.find((b) => b.taskId === "t-tz");
+      assert.ok(block, `${scenario.timezone} 应生成排程块`);
+      assert.equal(block.start, scenario.start);
+      assert.ok(toMinutes(block.start) >= notBefore);
+    }
+  } finally {
+    setActiveTimeZone(null);
+  }
 });

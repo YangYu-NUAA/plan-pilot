@@ -585,9 +585,10 @@ function App() {
     try {
       // 全程「先算后用、确认才落盘」：在当前状态副本上计算，不直接改时间轴；结果存入 schedulePreview，等用户确认。
       const snapshot = { tasks: planner.tasks, blocks: planner.blocks };
-      const nowDate = getLocalDate();
+      const currentAppTime = appNow();
+      const nowDate = getLocalDate(currentAppTime);
       const isTodayScheduling = nowDate === selectedDate;
-      const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      const nowMinutes = currentAppTime.getHours() * 60 + currentAppTime.getMinutes();
       const scheduleNow = toTime(nowMinutes);
       const notBefore = isTodayScheduling ? nowMinutes : null;
       const scheduleConstraintNote = isTodayScheduling

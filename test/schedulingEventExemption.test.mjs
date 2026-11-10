@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildAutoBlocks, reconcileScheduleBlocks, freeDayGaps } from "../src/planner/scheduling.js";
 import { isEventLikeTodo } from "../src/planningSemantics.js";
+import { toMinutes } from "../src/utils/dateTime.js";
 
 const SETTINGS = {
   workSegments: [{ start: "09:00", end: "12:00" }, { start: "13:00", end: "18:00" }],
@@ -148,6 +149,23 @@ test("normalizeAiScheduleResult：事件类任务的时段外 AI 建议被接受
   assert.ok(dinner, "时段外的有效事件建议应被保留");
   assert.equal(dinner.start, "19:30");
   assert.equal(dinner.outsideWindow, true);
+});
+
+test("normalizeAiScheduleResult：事件类 AI 块同样不得早于 notBefore，拒绝后转为问题", () => {
+  const tasks = [task("t-dinner", "晚上和老同学聚餐")];
+  const result = normalizeAiScheduleResult(
+    { blocks: [{ taskId: "t-dinner", start: "19:00", end: "20:00" }], questions: [] },
+    {
+      tasks,
+      existingBlocks: [],
+      settings: SETTINGS,
+      selectedDate: "2026-08-27",
+      notBefore: 20 * 60,
+    },
+  );
+  assert.ok(!result.blocks.some((b) => b.taskId === "t-dinner"), "19:00–20:00 不得绕过 20:00 的当前时间下限");
+  assert.ok(result.questions.some((q) => q.taskId === "t-dinner"), "被拒绝的事件应进入待决问题");
+  assert.ok(result.blocks.filter((b) => b.auto).every((b) => toMinutes(b.start) >= 20 * 60));
 });
 
 test("normalizeAiScheduleResult：普通任务的时段外建议仍被拒绝（回归守卫）", () => {
