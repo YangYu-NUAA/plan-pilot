@@ -214,6 +214,8 @@ export function TodayView({
       end: block.end,
       type: block.type || "task",
     });
+    // 编辑表单在「手动排块」折叠区里：点块上的 ✏ 时自动展开，否则看起来像按钮失灵
+    setShowBlockForm(true);
   }
 
   function cancelEditingBlock() {

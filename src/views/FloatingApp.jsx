@@ -28,6 +28,15 @@ export function FloatingApp() {
   const [data, setData] = useState(null);
   const [focus, setFocus] = useState(readFocus);
 
+  // 首帧时区就位：planner 状态在 localStorage（同源共享），同步读取设置，
+  // 不等 /api/data 异步返回——否则首屏用系统时区渲染，「现在」错位
+  useEffect(() => {
+    try {
+      const tz = JSON.parse(localStorage.getItem("personal-planning-coach-v1") || "{}")?.settings?.timezone;
+      setActiveTimeZone(tz && tz !== "auto" ? tz : null);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     const tick = setInterval(() => setNow(appNow()), 500);
     return () => clearInterval(tick);
@@ -83,11 +92,20 @@ export function FloatingApp() {
 
   // —— 专注模式：迷你番茄钟 ——
   const focusBlock = focus ? blocks.find((b) => b.id === focus.blockId) : null;
-  if (focus && focusBlock) {
+  // 残留清理：块已删/跨天陈旧（结束超 2 小时且任务已完成）→ 忽略，回常览
+  const focusStale = useMemo(() => {
+    if (!focusBlock || !focus) return false;
+    const end = toMinutes(focusBlock.end);
+    const dateOk = focusBlock.date === todayStr;
+    const task = focusBlock.taskId ? taskById[focusBlock.taskId] : null;
+    return !dateOk || (nowMin - end > 120 && task?.status === "done");
+  }, [focusBlock, focus, todayStr, nowMin, taskById]);
+  if (focus && focusBlock && !focusStale) {
     const focusTask = focusBlock.taskId ? taskById[focusBlock.taskId] : null;
     const title = focusTask?.title || focusBlock.title || "专注";
     const start = toMinutes(focusBlock.start);
     const end = toMinutes(focusBlock.end);
+    const leadMin = start - nowMin; // >0：块还没开始
     const remainSec = Math.round((end - nowMin) * 60);
     const mm = String(Math.floor(Math.max(0, remainSec) / 60)).padStart(2, "0");
     const ss = String(Math.max(0, remainSec) % 60).padStart(2, "0");
@@ -97,7 +115,9 @@ export function FloatingApp() {
       <div className="pip-root floating-root floating-focus">
         <div className="pip-head floating-drag">
           <span className="pip-state is-now"><AlarmClock size={11} /> 专注中</span>
-          <span className="floating-brand">{focusBlock.start}–{focusBlock.end}</span>
+          <span className="floating-brand">
+            {leadMin > 0 ? `${Math.max(1, Math.round(leadMin))} 分钟后开始` : `${focusBlock.start}–${focusBlock.end}`}
+          </span>
           <button type="button" className="pip-close" onClick={() => sendCmd("exit")} title="退出专注（小窗回到常览）">
             <X size={13} />
           </button>

@@ -921,6 +921,11 @@ function App() {
     if (focusBlock) extendBlock(focusBlock.id, minutes);
   }
 
+  // 主窗启动时清掉跨次重启的专注残留（小窗若在，storage 事件会让它回常览）
+  useEffect(() => {
+    localStorage.removeItem("plan-pilot-focus");
+  }, []);
+
   // 小窗遥控命令：完成打卡 / +10 分钟 / 退出专注
   useEffect(() => {
     const onStorage = (e) => {
