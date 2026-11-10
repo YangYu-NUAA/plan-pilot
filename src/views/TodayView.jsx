@@ -346,7 +346,7 @@ export function TodayView({
         <div className="coach-copy">
           <div>
             <p className="eyebrow">晨间问题</p>
-            <h2>{formatHumanDate(selectedDate)}</h2>
+            <h2>{dayPlan.morningDone ? "今天已就绪" : "先确定今天的节奏"}</h2>
             {!coachExpanded && (
               <p className="coach-summary">
                 {dayPlan.morningDone ? "已保存" : dayPlan.fixed || dayPlan.topThree || dayPlan.changes ? "有未保存内容" : "未填写"}
