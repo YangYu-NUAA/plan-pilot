@@ -85,7 +85,7 @@ import {
   buildAutoBlocks,
   findBlockCopySlot,
 } from "./planner/scheduling.js";
-import { isTaskSessionDone, setTaskSessionDone, splitTaskBlock } from "./planner/taskSessions.js";
+import { adjustBlockDuration, isTaskSessionDone, setTaskSessionDone, splitTaskBlock } from "./planner/taskSessions.js";
 import {
   makeBreakdown,
   normalizeBreakdownItems,
@@ -976,14 +976,16 @@ function App() {
   const focusBlock = focusBlockId ? planner.blocks.find((b) => b.id === focusBlockId) : null;
   const focusTask = focusBlock?.taskId ? taskById[focusBlock.taskId] : null;
 
-  // 块尾顺延（全屏专注与小窗专注共用）
+  // 块尾加减时长（全屏专注与小窗常览/专注共用）；最短 15 分钟，最晚不超过 24:00。
   function extendBlock(blockId, minutes) {
     const block = planner.blocks.find((b) => b.id === blockId);
-    if (!block) return;
-    const newEnd = toTime(Math.min(24 * 60, toMinutes(block.end) + minutes));
+    if (!block) return false;
+    const adjusted = adjustBlockDuration(block, minutes);
+    if (adjusted.end === block.end) return false;
     patchPlanner((current) => ({
-      blocks: current.blocks.map((b) => (b.id === blockId ? { ...b, end: newEnd } : b)),
+      blocks: current.blocks.map((b) => (b.id === blockId ? adjustBlockDuration(b, minutes) : b)),
     }));
+    return true;
   }
 
   // Electron 专注小窗的状态/遥控通道（同源 localStorage：主窗唯一写数据，小窗只发命令）
@@ -1022,15 +1024,17 @@ function App() {
       localStorage.removeItem(FOCUS_CMD_KEY);
       let focusState = null;
       try { focusState = JSON.parse(localStorage.getItem(FOCUS_KEY) || "null"); } catch { /* ignore */ }
-      if (cmd.type === "complete" && focusState) {
-        const block = planner.blocks.find((b) => b.id === focusState.blockId);
+      // 专注命令可沿用 FOCUS_KEY；普通悬浮窗则直接携带当前 blockId。
+      const commandBlockId = cmd.blockId || focusState?.blockId;
+      if (cmd.type === "complete" && commandBlockId) {
+        const block = planner.blocks.find((b) => b.id === commandBlockId);
         const task = block?.taskId ? taskById[block.taskId] : null;
         if (block && task && !isTaskSessionDone(block, task)) toggleBlockDone(block.id);
-      } else if (cmd.type === "extend" && focusState) {
-        extendBlock(focusState.blockId, 10);
+      } else if ((cmd.type === "extend" || cmd.type === "shorten") && commandBlockId) {
+        extendBlock(commandBlockId, cmd.type === "extend" ? 10 : -10);
       }
-      if (cmd.type !== "extend") {
-        localStorage.removeItem(FOCUS_KEY); // 小窗退出专注，回到常览
+      if (cmd.type === "complete" || cmd.type === "exit") {
+        localStorage.removeItem(FOCUS_KEY); // 完成/退出时，小窗回到常览
       }
     };
     window.addEventListener("storage", onStorage);

@@ -24,6 +24,14 @@ npm run mac:build        # = npm run build + electron-builder --mac (arm64 dmg)
 
 开发调试（不打包）：`npm run electron:dev`。数据目录可用 `PLAN_PILOT_DATA_DIR` 覆盖；自动化测试需要完全隔离的 profile 时，可同时设置 `PLAN_PILOT_USER_DATA_DIR`（会影响 Key 密文与 Web 本地数据的位置）。
 
+## 悬浮窗
+
+- 常览与专注状态都支持「完成本段 / −10 分钟 / +10 分钟」；普通常览通过命令里的 `blockId` 指定目标，主窗统一持久化，小窗乐观更新。
+- 整个卡片都是拖动区域，按钮使用 `no-drag` 保留点击；窗口启用 movable、resizable 和 thickFrame，可从边缘调整大小。
+- 缩短后最短保留 15 分钟，延长不超过当天 24:00。
+
+原生回归脚本为 `npm run test:e2e:floating`，必须同时设置隔离的 `PLAN_PILOT_USER_DATA_DIR=/tmp/plan-pilot-<测试名>`。真实鼠标拖动/缩放需要 macOS `postEventAccess` 权限，未授权时会明确跳过；按钮联动和窗口属性仍正常验证。
+
 ## 从网页版迁移
 
 网页版（dev server）的数据在项目 `data/` 目录；App 的在 `~/Library/Application Support/Plan Pilot/data/`。迁移 = 整目录拷贝：

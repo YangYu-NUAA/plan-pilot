@@ -44,3 +44,11 @@ export function setTaskSessionDone(tasks, blocks, blockId, done) {
 export function isTaskSessionDone(block, task) {
   return Boolean(block?.done || task?.status === "done");
 }
+
+export function adjustBlockDuration(block, deltaMinutes) {
+  if (!block?.start || !block?.end) return block;
+  const delta = Number(deltaMinutes) || 0;
+  const start = toMinutes(block.start);
+  const end = Math.max(start + 15, Math.min(24 * 60, toMinutes(block.end) + delta));
+  return { ...block, end: toTime(end) };
+}

@@ -1,6 +1,6 @@
 {
   "name": "plan-pilot",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "引导式任务录入、目标拆解和自动时间规划工具。",
   "private": true,
   "keywords": [
@@ -35,6 +35,7 @@
     "test:e2e:timeline": "node scripts/e2e-timeline-autoscroll.mjs",
     "test:e2e:gantt": "node scripts/e2e-gantt.mjs",
     "test:e2e:sessions": "node scripts/e2e-task-sessions.mjs",
+    "test:e2e:floating": "electron scripts/electron-floating-native.e2e.cjs",
     "electron:dev": "npm run build && electron .",
     "mac:build": "npm run build && electron-builder --mac"
   },

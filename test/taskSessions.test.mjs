@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { compactPlannerTasks } from "../src/planner/dedup.js";
 import { findBlockCopySlot, normalizeAiScheduleResult } from "../src/planner/scheduling.js";
-import { isTaskSessionDone, setTaskSessionDone, splitTaskBlock } from "../src/planner/taskSessions.js";
+import { adjustBlockDuration, isTaskSessionDone, setTaskSessionDone, splitTaskBlock } from "../src/planner/taskSessions.js";
 
 const date = "2026-11-11";
 const settings = {
@@ -90,4 +90,11 @@ test("分段打卡：完成上午段不完成下午段，全部完成后任务�
 
   const single = setTaskSessionDone([task], [morning], morning.id, true);
   assert.equal(single.tasks[0].status, "done", "单段任务保持原有整体打卡行为");
+});
+
+test("悬浮窗加减时长：保留最短 15 分钟且不超过当天末尾", () => {
+  assert.equal(adjustBlockDuration(morning, 10).end, "11:10");
+  assert.equal(adjustBlockDuration(morning, -10).end, "10:50");
+  assert.equal(adjustBlockDuration({ ...morning, end: "09:20" }, -10).end, "09:15");
+  assert.equal(adjustBlockDuration({ ...morning, end: "23:55" }, 10).end, "24:00");
 });

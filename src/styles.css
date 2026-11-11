@@ -3888,7 +3888,11 @@ li,
   height: 100dvh; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 7px;
   padding: 10px 13px 12px;
+  /* 整个卡片都可拖动，不再只有顶部细条；按钮单独恢复点击。 */
+  -webkit-app-region: drag;
+  cursor: move;
 }
+.floating-root button { -webkit-app-region: no-drag; cursor: pointer; }
 /* 常览模式内容少：垂直居中，避免挤在顶部 */
 .floating-root:not(.floating-focus) { justify-content: center; gap: 9px; }
 /* 标题允许两行：长任务名不再一行截断 */
@@ -3933,8 +3937,11 @@ li,
   font-feature-settings: "tnum";
 }
 .floating-clock.is-overtime { color: var(--warning); }
-.floating-focus-actions { display: flex; gap: 8px; margin-top: 4px; }
-.floating-focus-actions .pip-done { flex: 1; justify-content: center; min-height: 34px; }
+.floating-focus-actions,
+.floating-actions { display: flex; gap: 6px; margin-top: 4px; -webkit-app-region: no-drag; }
+.floating-focus-actions .pip-done,
+.floating-actions .pip-done { flex: 1; justify-content: center; min-height: 34px; white-space: nowrap; }
+.floating-actions .pip-extend { padding: 0 8px; white-space: nowrap; }
 .pip-extend {
   display: inline-flex; align-items: center; gap: 5px;
   min-height: 34px; padding: 0 12px;
