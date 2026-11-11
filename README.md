@@ -59,7 +59,13 @@ Capacitor 壳，数据只存手机本机，AI 与语音经原生 HTTP 直连，�
 
 ## 版本更新
 
-### 2026-11-10
+### 2026-11-10 · v0.2.1
+
+- 大任务支持多段执行：同一任务可保留上午、下午等多个非重叠时间块，AI 不再把第二段当作重复项删除，也不会用任务总估时覆盖每段自己的结束时间。
+- 时间块新增拆分与复制到真实空档；支持逐段完成，所有段完成后任务才整体完成；手动接管或完成其中一段后，重新自动安排仍保留其他段。
+- Planning Skill Protocol 升级至 v1.1：规划访谈通过 `add_session` 给现有任务添加工作段，不再靠重复任务或固定占用模拟拆分。
+
+### 2026-11-10 · v0.2.0
 
 - macOS 版上线。Electron 打包，本地服务器随 App 运行，数据存为 JSON 文件，与网页版同构、可直接迁移。
 - 修复 Mac 版重启后 API Key 消失：聊天与语音 Key 改为 macOS 钥匙串加密保存，不再受内嵌服务器随机端口变化影响；清空本地数据会同步移除两把 Key。
@@ -319,10 +325,10 @@ npm run preview
 npm test                    # Node 纯函数与同步/安全存储回归
 npx playwright install chromium
 npm run dev                 # 另一个终端保持 127.0.0.1:5173 运行
-npm run test:e2e            # Chromium：时间轴自动滚动 + 甘特拖拽/缩放
+npm run test:e2e            # Chromium：时间轴 + 甘特 + 多段任务/智能体
 ```
 
-也可分别运行 `npm run test:e2e:timeline` 与 `npm run test:e2e:gantt`。E2E 使用隔离的浏览器上下文和拦截数据，不会写入你的正式计划文件。
+也可分别运行 `npm run test:e2e:timeline`、`npm run test:e2e:gantt` 与 `npm run test:e2e:sessions`。E2E 使用隔离的浏览器上下文和拦截数据，不会写入你的正式计划文件。
 
 ## 使用方法
 

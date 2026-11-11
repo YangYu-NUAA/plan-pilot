@@ -2725,6 +2725,9 @@ textarea:focus-visible {
   opacity: 0; transition: opacity .12s; pointer-events: none;
 }
 .dt-blk:hover .dt-actions { opacity: 1; pointer-events: auto; }
+@media (hover: hover) and (pointer: fine) {
+  .dt-blk:has(.dt-split-action) { --dt-actions-width: 126px; }
+}
 .dt-blk.dt-done { opacity: 0.65; }
 .dt-blk.dt-done .dt-bt { text-decoration: line-through; }
 .dt-actions button {
@@ -3636,7 +3639,10 @@ li,
 /* 触屏无 hover：时间轴块的勾选与操作按钮常驻可见，任务行按钮保持可点 */
 @media (hover: none) {
   .dt-blk { touch-action: pan-y; cursor: default; }
-  .dt-resize { display: none; }
+  .dt-resize,
+  .dt-split-action,
+  .dt-duplicate-action { display: none; }
+  /* 拆分/复制仍可在时间块编辑条中使用，触屏不需要 hover。 */
   .dt-check { opacity: 1; }
   .dt-actions { opacity: 1; pointer-events: auto; }
   .dt-blk:has(.dt-check) .dt-body { padding-left: 22px; }

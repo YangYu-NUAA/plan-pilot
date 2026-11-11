@@ -378,6 +378,7 @@ export function normalizeAiScheduleResult(result, { tasks, existingBlocks, setti
   });
   const taskById = Object.fromEntries(adjustedTasks.map((task) => [task.id, task]));
   const scheduledTaskIds = new Set(manualBlocks.map((block) => block.taskId).filter(Boolean));
+  const manualTaskIds = new Set(scheduledTaskIds);
   const autoBlocks = [];
   let questions = normalizeScheduleQuestions(result?.questions, taskById);
 
@@ -386,15 +387,16 @@ export function normalizeAiScheduleResult(result, { tasks, existingBlocks, setti
     const task = taskById[taskId];
     const start = String(item.start || "");
     const requestedEnd = String(item.end || "");
-    if (!task || task.date !== selectedDate || task.status === "done" || task.fixedTime || task.kind === "fixed" || scheduledTaskIds.has(taskId)) return;
+    // 手动接管的任务由用户安排；同一任务则可以拥有多个 AI 工作段。
+    if (!task || task.date !== selectedDate || task.status === "done" || task.fixedTime || task.kind === "fixed" || manualTaskIds.has(taskId)) return;
     if (isTicketPurchaseTask(task.title) && !parseTimeInSentence(task.title)) return;
     const meetingEnd = isPostMeetingTask(task.title) ? meetingEndForTask(task.title, manualBlocks) : null;
     if (isPostMeetingTask(task.title) && (!meetingEnd || toMinutes(start) < meetingEnd)) return;
     if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(requestedEnd) || toMinutes(requestedEnd) <= toMinutes(start)) return;
     // 当前时间下限对所有 AI 块生效；事件类只能豁免工作时段，不能豁免 notBefore。
     if (typeof notBefore === "number" && toMinutes(start) < notBefore) return;
-    const estimateMinutes = estimateMinutesForTitle(task.title, Number(task.estimateMinutes) || duration(start, requestedEnd));
-    const end = toTime(toMinutes(start) + estimateMinutes);
+    // 每个工作段使用模型给出的实际结束时间；不能用任务总估时覆盖它。
+    const end = requestedEnd;
 
     const eventExempt = isEventLikeTodo(task.title);
     const block = {
@@ -488,7 +490,7 @@ export function normalizeAiScheduleResult(result, { tasks, existingBlocks, setti
 
   const reconciled = reconcileScheduleBlocks(
     existingBlocks
-      .filter((block) => !(block.date === selectedDate && block.auto))
+      .filter((block) => !(block.date === selectedDate && block.auto && !manualTaskIds.has(block.taskId)))
       .concat(autoBlocks),
     settings,
     selectedDate,
@@ -592,10 +594,33 @@ export function findSlotForTask(task, settings, dayBlocks, selectedDate, options
   return null;
 }
 
+// 复制时间块时选择「源块之后的第一个完整空档」，没有则回落到当天最早的完整空档。
+export function findBlockCopySlot(block, dayBlocks, settings) {
+  const durationMinutes = toMinutes(block?.end) - toMinutes(block?.start);
+  if (!block?.id || !block?.date || durationMinutes < 5) return null;
+  // 源块也必须继续占用原时段；否则复制会落回原位并随后被去重删除。
+  const occupied = dayBlocks.filter((item) => item.date === block.date);
+  const intervals = block.outsideWindow
+    ? freeDayGaps(0, 24 * 60, occupied)
+    : getFreeIntervals(settings, occupied.concat(getProtectedBreaks(settings)));
+
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+  const sourceEnd = toMinutes(block.end);
+  const after = sorted.find((interval) => {
+    const start = Math.max(interval.start, sourceEnd);
+    return start + durationMinutes <= interval.end;
+  });
+  const interval = after || sorted.find((item) => item.end - item.start >= durationMinutes);
+  if (!interval) return null;
+  const start = Math.max(interval.start, after ? sourceEnd : interval.start);
+  return { start: toTime(start), end: toTime(start + durationMinutes) };
+}
+
 export function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate, notBefore }) {
   const todayBlocks = existingBlocks.filter((block) => block.date === selectedDate);
   const manualBlocks = todayBlocks.filter((block) => !block.auto);
   const scheduledTaskIds = new Set(manualBlocks.map((block) => block.taskId).filter(Boolean));
+  const manualTaskIds = new Set(scheduledTaskIds);
   const busyTaskTitles = new Set(
     manualBlocks
       .filter((block) => block.type === "busy")
@@ -750,7 +775,7 @@ export function buildAutoBlocks({ tasks, existingBlocks, settings, selectedDate,
 
   const reconciled = reconcileScheduleBlocks(
     existingBlocks
-      .filter((block) => !(block.date === selectedDate && block.auto))
+      .filter((block) => !(block.date === selectedDate && block.auto && !manualTaskIds.has(block.taskId)))
       .concat(autoBlocks),
     settings,
     selectedDate,

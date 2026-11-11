@@ -83,7 +83,9 @@ import {
   normalizeAiScheduleResult,
   preparePlannerForScheduling,
   buildAutoBlocks,
+  findBlockCopySlot,
 } from "./planner/scheduling.js";
+import { isTaskSessionDone, setTaskSessionDone, splitTaskBlock } from "./planner/taskSessions.js";
 import {
   makeBreakdown,
   normalizeBreakdownItems,
@@ -667,7 +669,7 @@ function App() {
           {
             role: "system",
             content:
-              `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. If a large task (≥120 min) cannot fit in a single free interval, consider splitting it across two sessions (e.g. morning + afternoon). Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message. If there are simply no tasks to place today, just return empty blocks with a brief note — do NOT generate questions asking the user to add todos.`,
+              `You are a proactive daily time-blocking planner. Return only JSON: {\"message\":\"short scheduling note\",\"taskAdjustments\":[{\"taskId\":\"existing task id\",\"estimateMinutes\":120,\"reason\":\"why the estimate changed\"}],\"blocks\":[{\"taskId\":\"existing task id\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"title\":\"optional\"}],\"questions\":[{\"taskId\":\"optional\",\"title\":\"...\",\"reason\":\"why uncertain\",\"hint\":\"what user should decide\"}]}.\n\n<<< HARD BOUNDARY RULE — VIOLATION IS UNACCEPTABLE >>>\nWork segments = [${segList}]. You MUST schedule EVERY block strictly within these time windows. A block starting before the first segment, ending after the last segment, or crossing into a protected break is a FATAL ERROR. Protected breaks (MUST NOT overlap any block): ${breakDesc}. Before outputting JSON, scan every block and verify: (1) start >= the segment's start, (2) end <= the segment's end, (3) the block does not intersect any protected break. If a task cannot fit, ask a question instead of violating the boundary.\n<<< END HARD BOUNDARY RULE >>>\n\nUse only existing task ids and never invent tasks. Re-plan the day from scratch on every call while respecting manual/fixed blocks and the already-pinned fixedTimeTasks as hard constraints: never output blocks for fixedTimeTasks and never overlap their time ranges; schedule the remaining tasks around them. Do not merely place tasks in input order: reason about urgency, cognitive load, context switching, dependencies, deadlines, energy, and realistic duration. Put deep research/design/writing work into coherent focus blocks, light admin work into lower-energy windows, and preserve dependencies: print before scan/upload/submit, scan before upload, outline/framework/core points before drafting, meeting preparation before the meeting, and meeting follow-up after the meeting. If a ticket-buying task does not say when the purchase itself must happen, ask the user instead of confusing the departure time with purchase time. If duration or placement is genuinely uncertain, ask one concise question instead of forcing a block. Time-splitting guidance: when multiple tasks in the same priority tier compete for limited time in one segment, split the available contiguous time among them proportionally by estimateMinutes rather than stacking arbitrarily. For deep research/design/writing tasks estimated ≥120 min, split them into 2–4 non-overlapping focus sessions (normally 45–120 min each), even when one large interval could contain the whole task; distribute sessions across morning/afternoon or different work segments when possible. Repeat the same taskId for every session and never create duplicate tasks. Honor each session's own start/end and make their total duration equal estimateMinutes. Do not collapse split sessions into one block. Example for a 240-minute task: {taskId:"same-id",start:"09:00",end:"11:00"} and {taskId:"same-id",start:"14:00",end:"16:00"}. Prefer high-focus deep work in the longest uninterrupted slots; put light admin tasks into shorter gaps. The currentAutoBlocks in the payload show what was previously auto-scheduled — you may keep, adjust, or replace them, but always explain significant changes in the message. If there are simply no tasks to place today, just return empty blocks with a brief note — do NOT generate questions asking the user to add todos.`,
           },
           ...(isTodayScheduling
             ? [{ role: "system", content: scheduleConstraintNote }]
@@ -831,13 +833,9 @@ function App() {
       return;
     }
 
+    // 新增同任务的另一段时保留旧块；只替换与新时间段实际重叠的自动块。
     const blocksWithoutOverriddenAuto = compacted.blocks.filter(
-      (block) =>
-        !(
-          block.date === selectedDate &&
-          block.auto &&
-          ((canonicalTaskId && block.taskId === canonicalTaskId) || overlapsAny(nextBlock, [block]))
-        ),
+      (block) => !(block.date === selectedDate && block.auto && overlapsAny(nextBlock, [block])),
     );
     const conflict = blocksWithoutOverriddenAuto.find(
       (block) => block.date === selectedDate && overlapsAny(nextBlock, [block]),
@@ -919,6 +917,61 @@ function App() {
     return true;
   }
 
+  function splitBlock(blockId) {
+    const source = planner.blocks.find((block) => block.id === blockId);
+    if (!source?.taskId || source.type === "busy") return false;
+    const pieces = splitTaskBlock(source, uid);
+    if (!pieces) {
+      setScheduleNotice({ text: "时间块至少需要 30 分钟才能拆成两段；也可以复制后手动调整时长。", tone: "error" });
+      return false;
+    }
+    patchPlanner((current) => ({
+      blocks: current.blocks.flatMap((block) => block.id === blockId ? pieces : [block]),
+    }));
+    setScheduleNotice({
+      text: `已从中间拆为 ${pieces[0].start}–${pieces[0].end} 和 ${pieces[1].start}–${pieces[1].end} 两段；可拖动第二段到下午。`,
+      tone: "info",
+    });
+    return true;
+  }
+
+  function duplicateBlock(blockId) {
+    const source = planner.blocks.find((block) => block.id === blockId);
+    if (!source?.taskId || source.type === "busy") return false;
+    const slot = findBlockCopySlot(source, planner.blocks, planner.settings);
+    if (!slot) {
+      setScheduleNotice({ text: "今天没有能容纳这段任务的完整空档，可缩短源块后再复制。", tone: "error" });
+      return false;
+    }
+    const copy = {
+      ...source,
+      id: uid("block"),
+      ...slot,
+      auto: false,
+      fixedTime: false,
+      done: false,
+    };
+    patchPlanner((current) => ({
+      tasks: current.tasks.map((task) => task.id === source.taskId && task.status === "done" ? { ...task, status: "open" } : task),
+      blocks: current.blocks.concat(copy),
+    }));
+    setScheduleNotice({ text: `已复制到 ${slot.start}–${slot.end}，仍关联同一个任务，不会新建重复待办。`, tone: "info" });
+    return true;
+  }
+
+  function toggleBlockDone(blockId) {
+    const block = planner.blocks.find((item) => item.id === blockId);
+    const task = block?.taskId ? taskById[block.taskId] : null;
+    if (!block || !task) return false;
+    const done = !isTaskSessionDone(block, task);
+    patchPlanner((current) => setTaskSessionDone(current.tasks, current.blocks, blockId, done));
+    if (done) {
+      playTick(planner.settings);
+      tapDone();
+    }
+    return done;
+  }
+
   // 专注模式：聚焦某个任务时间块，全屏倒计时；完成即打卡，+10 分钟顺延块尾
   const focusBlock = focusBlockId ? planner.blocks.find((b) => b.id === focusBlockId) : null;
   const focusTask = focusBlock?.taskId ? taskById[focusBlock.taskId] : null;
@@ -947,10 +1000,8 @@ function App() {
     setFocusBlockId(blockId);
   }
   function completeFocus() {
-    if (focusTask) {
-      updateTask(focusTask.id, { status: "done" });
-      playTick(planner.settings);
-    }
+    // 专注按钮的语义是“完成”，不是切换；已完成任务不应被这次点击重新打开。
+    if (focusBlock && focusTask && !isTaskSessionDone(focusBlock, focusTask)) toggleBlockDone(focusBlock.id);
     setFocusBlockId(null);
   }
   function extendFocus(minutes) {
@@ -974,11 +1025,7 @@ function App() {
       if (cmd.type === "complete" && focusState) {
         const block = planner.blocks.find((b) => b.id === focusState.blockId);
         const task = block?.taskId ? taskById[block.taskId] : null;
-        if (task && task.status !== "done") {
-          updateTask(task.id, { status: "done" });
-          playTick(planner.settings);
-          tapDone();
-        }
+        if (block && task && !isTaskSessionDone(block, task)) toggleBlockDone(block.id);
       } else if (cmd.type === "extend" && focusState) {
         extendBlock(focusState.blockId, 10);
       }
@@ -1486,7 +1533,8 @@ function App() {
               interviewScope: scopeOverride || planningCoach.scope,
               dayPlan,
               existingGoals: planner.goals.map(({ id, title, type, parentId, status }) => ({ id, title, type, parentId, status })),
-              existingTasks: planner.tasks.map(({ title, date, estimateMinutes, priority, status, goalId }) => ({
+              existingTasks: planner.tasks.map(({ id, title, date, estimateMinutes, priority, status, goalId }) => ({
+                id,
                 title,
                 date,
                 estimateMinutes,
@@ -1504,6 +1552,9 @@ function App() {
                 goals: planningCoach.draft.goals.map((g) => ({ tempId: g.tempId, type: g.type, title: g.title })),
                 tasks: planningCoach.draft.tasks.map((t) => ({ title: t.title, date: t.date })),
                 busy: planningCoach.draft.busy.map((b) => ({ title: b.title, date: b.date })),
+                sessions: (planningCoach.draft.sessions || []).map((session) => ({
+                  taskId: session.taskId, title: session.title, date: session.date, start: session.start, end: session.end,
+                })),
               },
             }),
           },
@@ -1589,6 +1640,7 @@ function App() {
       const goalItems = filteredSuggestions.filter((item) => item.kind === "goal");
       const taskItems = filteredSuggestions.filter((item) => item.kind === "task");
       const busyItems = filteredSuggestions.filter((item) => item.kind === "busy");
+      const sessionItems = filteredSuggestions.filter((item) => item.kind === "session");
       const existingGoalKeys = new Set(current.goals.map(goalIdentity));
       const existingGoalByTitle = new Map(current.goals.map((goal) => [normalizeTitle(goal.title), goal.id]));
       const preparedGoals = goalItems.map((item) => ({ ...item, newId: uid("goal") }));
@@ -1649,7 +1701,7 @@ function App() {
         createdAt: new Date().toISOString(),
       }));
 
-      const blocks = busyItems.map((item) => ({
+      const busyBlocks = busyItems.map((item) => ({
         id: uid("block"),
         date: item.date,
         type: "busy",
@@ -1659,17 +1711,39 @@ function App() {
         end: item.end,
         auto: false,
       }));
+      const sessionBlocks = sessionItems.map((item) => {
+        const linkedTask = current.tasks.find((task) => task.id === item.taskId) || current.tasks.find(
+          (task) => task.date === item.date && titlesReferToSameTask(task.title, item.title),
+        );
+        if (!linkedTask) return null;
+        return {
+          id: uid("block"),
+          date: item.date,
+          type: "task",
+          taskId: linkedTask.id,
+          title: "",
+          start: item.start,
+          end: item.end,
+          auto: false,
+          fixedTime: false,
+          done: false,
+        };
+      }).filter(Boolean);
+      const reopenedTaskIds = sessionBlocks.map((block) => block.taskId).filter((taskId) =>
+        current.tasks.some((task) => task.id === taskId && task.status === "done"));
 
       return {
         goals,
         tasks,
-        blocks,
+        blocks: busyBlocks.concat(sessionBlocks),
+        reopenedTaskIds,
         summary: {
           goals: goals.length,
           tasks: tasks.length,
           todayTasks: tasks.filter((task) => task.date === selectedDate).length,
           futureTasks: tasks.filter((task) => task.date !== selectedDate).length,
-          busy: blocks.length,
+          busy: busyBlocks.length,
+          sessions: sessionBlocks.length,
         },
       };
     }
@@ -1681,7 +1755,7 @@ function App() {
       summary = prepared.summary;
       return {
         goals: current.goals.concat(prepared.goals),
-        tasks: mergeDuplicateTasks(current.tasks.concat(prepared.tasks)),
+        tasks: mergeDuplicateTasks(current.tasks.map((task) => prepared.reopenedTaskIds.includes(task.id) ? { ...task, status: "open" } : task).concat(prepared.tasks)),
         blocks: current.blocks.concat(prepared.blocks),
       };
     });
@@ -1691,7 +1765,7 @@ function App() {
       suggestions: [],
       messages: coach.messages.concat({
         role: "assistant",
-        content: `已加入计划：${summary.goals} 个目标、${summary.tasks} 个任务（今日 ${summary.todayTasks} 个，后续 ${summary.futureTasks} 个）、${summary.busy} 个固定安排。后续任务可在"目标"页的后续任务区查看。`,
+        content: `已加入计划：${summary.goals} 个目标、${summary.tasks} 个任务（今日 ${summary.todayTasks} 个，后续 ${summary.futureTasks} 个）、${summary.busy} 个固定安排、${summary.sessions} 个任务工作段。后续任务可在"目标"页的后续任务区查看。`,
       }),
     }));
   }
@@ -1990,16 +2064,7 @@ function App() {
             planner={planner}
             taskById={taskById}
             goalById={goalById}
-            onToggleTask={(taskId) => {
-              const task = taskById[taskId];
-              if (!task) return;
-              const marking = task.status !== "done";
-              updateTask(taskId, { status: marking ? "done" : "open" });
-              if (marking) {
-                playTick(planner.settings);
-                tapDone();
-              }
-            }}
+            onToggleBlock={toggleBlockDone}
             onStartFocus={startFocus}
             onGoToday={() => setActiveView("today")}
           />
@@ -2045,6 +2110,9 @@ function App() {
             addBlockDirectly={addBlockDirectly}
             deleteBlock={deleteBlock}
             updateBlock={updateBlock}
+            splitBlock={splitBlock}
+            duplicateBlock={duplicateBlock}
+            toggleBlockDone={toggleBlockDone}
             applyDragReschedule={applyDragReschedule}
             scheduleTaskAtMinute={scheduleTaskAtMinute}
             aiStatus={aiStatus}

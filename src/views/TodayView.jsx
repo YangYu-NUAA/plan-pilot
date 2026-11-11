@@ -57,6 +57,9 @@ export function TodayView({
   addBlockDirectly,
   deleteBlock,
   updateBlock,
+  splitBlock,
+  duplicateBlock,
+  toggleBlockDone,
   applyDragReschedule,
   scheduleTaskAtMinute,
   aiStatus,
@@ -530,9 +533,11 @@ export function TodayView({
                   <span>
                     {item.kind === "goal"
                       ? `${goalTypeLabel[item.type]}目标 · ${priorityLabel[item.priority]}优先级`
-                      : item.kind === "busy"
-                        ? `${item.start}-${item.end} · 固定安排`
-                        : `${item.date} · ${item.estimateMinutes} 分钟 · ${priorityLabel[item.priority]}优先级`}
+                      : item.kind === "session"
+                        ? `${item.date} · ${item.start}-${item.end} · 任务工作段`
+                        : item.kind === "busy"
+                          ? `${item.start}-${item.end} · 固定安排`
+                          : `${item.date} · ${item.estimateMinutes} 分钟 · ${priorityLabel[item.priority]}优先级`}
                   </span>
                 </article>
               ))}
@@ -882,10 +887,7 @@ export function TodayView({
             blocks={planner.blocks}
             taskById={taskById}
             selectedDate={selectedDate}
-            onCompleteTask={(taskId) => {
-              updateTask(taskId, { status: "done" });
-              playTick(planner.settings);
-            }}
+            onCompleteBlock={toggleBlockDone}
           />
           <button className="secondary-action" onClick={autoSchedule} disabled={aiStatus.loading || Boolean(schedulePreview)}>
             <Sparkles size={18} />
@@ -1087,6 +1089,12 @@ export function TodayView({
             </select>
             <input className="dt-edit-title" value={blockEditDraft.title}
               onChange={(e) => setBlockEditDraft((d) => ({ ...d, title: e.target.value }))} placeholder="标题（可选）" />
+            {todayBlocks.some((block) => block.id === editingBlockId && block.taskId && block.type !== "busy") && (
+              <>
+                <button type="button" className="btn-text" onClick={() => { if (splitBlock(editingBlockId)) cancelEditingBlock(); }}>拆分为两段</button>
+                <button type="button" className="btn-text" onClick={() => { if (duplicateBlock(editingBlockId)) cancelEditingBlock(); }}>复制到空档</button>
+              </>
+            )}
             <button className="btn-text" onClick={() => saveEditingBlock(editingBlockId)}>保存</button>
             <button className="btn-text" onClick={cancelEditingBlock}>取消</button>
           </div>
@@ -1101,14 +1109,9 @@ export function TodayView({
           onDropTask={scheduleTaskAtMinute}
           onEdit={startEditingBlock}
           onDelete={deleteBlock}
-          onToggleDone={(block) => {
-            const t = taskById[block.taskId];
-            if (t) {
-              const marking = t.status !== "done";
-              updateTask(t.id, { status: marking ? "done" : "open" });
-              if (marking) { playTick(planner.settings); tapDone(); }
-            }
-          }}
+          onSplitBlock={splitBlock}
+          onDuplicateBlock={duplicateBlock}
+          onToggleDone={toggleBlockDone}
           onStartFocus={onStartFocus}
           dragTask={dragTaskId ? taskById[dragTaskId] : null}
           fitAll={fitAll}
@@ -1134,14 +1137,9 @@ export function TodayView({
               onDropTask={scheduleTaskAtMinute}
               onEdit={startEditingBlock}
               onDelete={deleteBlock}
-              onToggleDone={(block) => {
-                const t = taskById[block.taskId];
-                if (t) {
-                  const marking = t.status !== "done";
-                  updateTask(t.id, { status: marking ? "done" : "open" });
-                  if (marking) { playTick(planner.settings); tapDone(); }
-                }
-              }}
+              onSplitBlock={splitBlock}
+              onDuplicateBlock={duplicateBlock}
+              onToggleDone={toggleBlockDone}
               onStartFocus={onStartFocus}
               dragTask={dragTaskId ? taskById[dragTaskId] : null}
               fitAll

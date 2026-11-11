@@ -109,9 +109,10 @@ export function collectCoachItems(result) {
     : Array.isArray(result?.busyBlocks)
       ? result.busyBlocks.map((item) => ({ ...item, kind: "busy" }))
       : [];
+  const sessions = Array.isArray(result?.sessions) ? result.sessions.map((item) => ({ ...item, kind: "session" })) : [];
   // 动作 schema（harness B）：把 add_* 动作转成 item；ask/done 返回 null 被过滤。兼容旧 items 形态。
   const fromActions = Array.isArray(result?.actions) ? result.actions.map(actionToItem).filter(Boolean) : [];
-  return items.concat(goals, tasks, busy, fromActions);
+  return items.concat(goals, tasks, busy, sessions, fromActions);
 }
 
 export function normalizeCoachItems(items, selectedDate) {
@@ -129,6 +130,21 @@ export function normalizeCoachItems(items, selectedDate) {
           parentId: String(item.parentId || ""),
           parentTitle: String(item.parentTitle || item.parent || "").trim(),
           tempId: String(item.tempId || item.id || item.key || "").trim(),
+        };
+      }
+
+      if (inferredKind === "session") {
+        const start = /^\d{2}:\d{2}$/.test(item.start) ? item.start : "";
+        const end = /^\d{2}:\d{2}$/.test(item.end) ? item.end : "";
+        if (!start || !end || toMinutes(end) <= toMinutes(start)) return null;
+        return {
+          id: uid("coach"),
+          kind: "session",
+          title: String(item.title || "").trim(),
+          taskId: String(item.taskId || item.taskRef || "").trim(),
+          date: /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : selectedDate,
+          start,
+          end,
         };
       }
 
@@ -191,6 +207,7 @@ export function filterCoachItems(items, planner) {
   const keptTasks = [];
   const keptGoals = [];
   const keptBusy = [];
+  const keptSessions = [];
 
   return items.filter((item) => {
     if (item.kind === "goal") {
@@ -200,6 +217,18 @@ export function filterCoachItems(items, planner) {
       const duplicateNew = keptGoals.some((goal) => goal.type === item.type && titleLooksDuplicate(goal.title, item.title));
       if (duplicateExisting || duplicateNew) return false;
       keptGoals.push(item);
+      return true;
+    }
+
+    if (item.kind === "session") {
+      const linkedTask = planner.tasks.find((task) => task.id === item.taskId) || planner.tasks.find(
+        (task) => task.date === item.date && titlesReferToSameTask(task.title, item.title),
+      );
+      if (!linkedTask) return false;
+      const conflict = planner.blocks.concat(keptSessions).some((block) =>
+        block.date === item.date && toMinutes(block.start) < toMinutes(item.end) && toMinutes(item.start) < toMinutes(block.end));
+      if (conflict) return false;
+      keptSessions.push(item);
       return true;
     }
 

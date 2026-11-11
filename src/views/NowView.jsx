@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { appNow } from "../utils/clock.js";import { ArrowRight, CalendarClock, Check, Play } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../utils/dateTime.js";
 import { sortBlocks } from "../planner/scheduling.js";
+import { isTaskSessionDone } from "../planner/taskSessions.js";
 import { MetricRing } from "../components/ui/Metric.jsx";
 import { Illustration } from "../components/ui/Illustration.jsx";
 
 // 「当下」视图：打开手机第一眼只要一个答案——现在该做什么。
 // 大字号当前块 + 剩余倒计时 + 完成/专注大按钮；下面是今日剩余进程。
-export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocus, onGoToday }) {
+export function NowView({ planner, taskById, goalById, onToggleBlock, onStartFocus, onGoToday }) {
   const [now, setNow] = useState(() => appNow());
   useEffect(() => {
     const timer = setInterval(() => setNow(appNow()), 1000);
@@ -36,6 +37,7 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
   const currentTask = current?.taskId ? taskById[current.taskId] : null;
   const currentTitle = currentTask?.title || current?.title || "";
   const currentGoal = currentTask?.goalId ? goalById[currentTask.goalId]?.title : "";
+  const currentDone = isTaskSessionDone(current, currentTask);
 
   const remainSec = current ? Math.max(0, Math.round((toMinutes(current.end) - nowMin) * 60)) : 0;
   const progress = current
@@ -64,14 +66,14 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
             {currentTask && (
               <button
                 type="button"
-                className={`now-btn ${currentTask.status === "done" ? "secondary" : "primary"}`}
-                onClick={() => onToggleTask(currentTask.id)}
+                className={`now-btn ${currentDone ? "secondary" : "primary"}`}
+                onClick={() => onToggleBlock(current.id)}
               >
                 <Check size={22} />
-                {currentTask.status === "done" ? "恢复未完成" : "完成"}
+                {currentDone ? "恢复本段" : "完成本段"}
               </button>
             )}
-            {currentTask && currentTask.status !== "done" && (
+            {currentTask && !currentDone && (
               <button type="button" className="now-btn secondary" onClick={() => onStartFocus(current.id)}>
                 <Play size={20} />
                 专注

@@ -1,4 +1,4 @@
-export const PLANNING_SKILL_VERSION = "1.0.0";
+export const PLANNING_SKILL_VERSION = "1.1.0";
 
 export const TODAY_GUIDE_SYSTEM_PROMPT =
   "你是 Plan Pilot 的今日建议助手，严格遵守 Planning Skill Protocol：先落地、再补充、持续引导、确认无更多需求才结束。仅返回 JSON，不要输出 Markdown 或 JSON 之外的文字：{\"message\":\"给用户的简短说明或一个引导性问题\",\"done\":false,\"tasks\":[{\"title\":\"...\",\"date\":\"YYYY-MM-DD（可选，默认今天；事项写明未来日期就填那天）\",\"estimateMinutes\":45,\"priority\":\"high|medium|low\",\"start\":\"HH:MM（有明确时间才写，否则省略）\",\"goalId\":\"可选\",\"reason\":\"为什么\"}]}。" +
@@ -14,6 +14,7 @@ export function planningCoachSystemMessages() {
         `{"type":"add_goal","tempId":"g1","goalType":"long|month|week","title":"...","priority":"high|medium|low","parentRef":"已有目标 id 或某个 tempId（可选）"}；` +
         `{"type":"add_task","title":"...","date":"YYYY-MM-DD（可选）","estimateMinutes":60,"priority":"high|medium|low","goalRef":"已有目标 id 或 tempId（可选）"}；` +
         `{"type":"add_busy","title":"...","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM"}；` +
+        `{"type":"add_session","taskRef":"existingTasks 中已有任务 id","title":"已有任务标题","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM"}；` +
         `{"type":"ask","question":"要问用户的一个问题"}。`,
     },
     {
@@ -39,7 +40,7 @@ export function planningCoachSystemMessages() {
     {
       role: "system",
       content:
-        "规则：未来任务用绝对日期；没有日期锚点的内容按 week / month / long 设为目标；context.existingGoals / existingTasks / draftSummary 里已有的不要重复 add；复杂设计 / 方案 / 框架 / 技术路线任务估时≥180 分钟；会议前后分别准备与总结；购票区分执行时间与出行时间；打印→扫描→上传保持依赖顺序。",
+        "规则：未来任务用绝对日期；没有日期锚点的内容按 week / month / long 设为目标；context.existingGoals / existingTasks / draftSummary 里已有的不要重复 add；复杂设计 / 方案 / 框架 / 技术路线任务估时≥180 分钟；会议前后分别准备与总结；购票区分执行时间与出行时间；打印→扫描→上传保持依赖顺序。当用户要把一个已有大任务分到上午、下午或多个时段时，使用多个 add_session 并重复同一个 taskRef，每段写自己的 start/end；绝不要重复 add_task，也不要用 add_busy 冒充任务工作段。已有任务的 id 在 context.existingTasks 中提供。",
     },
   ];
 }

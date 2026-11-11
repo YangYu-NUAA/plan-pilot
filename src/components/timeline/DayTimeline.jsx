@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { appNow } from "../../utils/clock.js";import { CheckSquare, Pencil, Play, Square, Trash2 } from "lucide-react";
+import { appNow } from "../../utils/clock.js";import { CheckSquare, Copy, Pencil, Play, Scissors, Square, Trash2 } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../../utils/dateTime.js";
 import { isMeetingSentence } from "../../planningSemantics.js";
 import { estimateMinutesForTitle } from "../../planner/textExtract.js";
+import { isTaskSessionDone } from "../../planner/taskSessions.js";
 import { EmptyState } from "../../components/EmptyState.jsx";
 import { edgeScrollSpeed, frameDelta, clampScroll, findScrollableAncestor } from "./autoScroll.js";
 import { minuteAtClientY, pointerDeltaMinutes, settlePointerDrag } from "./timelineDrag.js";
 
-export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onToggleDone, onStartFocus, dragTask, fitAll = false }) {
+export function DayTimeline({ blocks, taskById, settings, selectedDate, onReschedule, onDropTask, onEdit, onDelete, onSplitBlock, onDuplicateBlock, onToggleDone, onStartFocus, dragTask, fitAll = false }) {
   const PXH_STD = 56; // 标准密度：每小时像素
   const segs = settings.workSegments || [];
   const hasContent = segs.length > 0 || blocks.length > 0; // 是否有可显示内容（否则给空态提示）
@@ -326,6 +327,9 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
         const task = taskById[block.taskId];
         const busy = block.type === "busy" || (!block.taskId && !block.auto);
         const title = task?.title || block.title || (busy ? "固定占用" : "自定义安排");
+        const sessions = task ? blocks.filter((item) => item.taskId === task.id && item.type !== "busy") : [];
+        const sessionIndex = sessions.length > 1 ? sessions.findIndex((item) => item.id === block.id) + 1 : 0;
+        const sessionDone = isTaskSessionDone(block, task);
         const isDragging = drag?.id === block.id;
         const dMove = isDragging && drag.mode === "move" ? drag.deltaMin : 0;
         const dResize = isDragging && drag.mode === "resize" ? drag.deltaMin : 0;
@@ -358,37 +362,48 @@ export function DayTimeline({ blocks, taskById, settings, selectedDate, onResche
           : { top, height: h };
         return (
           <article
-            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${task?.status === "done" ? " dt-done" : ""}${compact ? " dt-compact" : ""}${isLive ? " dt-live" : ""}`}
+            className={`dt-blk dt-${cls}${isDragging ? " dragging" : ""}${sessionDone ? " dt-done" : ""}${compact ? " dt-compact" : ""}${isLive ? " dt-live" : ""}`}
             key={block.id}
             style={blkStyle}
-            title={`${title} · ${toTime(startMin)}–${toTime(endMin)}（${endMin - startMin} 分钟）`}
+            title={`${title} · ${toTime(startMin)}–${toTime(endMin)}（${endMin - startMin} 分钟）${sessionIndex ? ` · 第 ${sessionIndex}/${sessions.length} 段` : ""}`}
             onPointerDown={(e) => startDrag(e, block, "move")}
           >
             {!busy && block.taskId && task && onToggleDone && (
               <button
                 type="button"
-                className={`dt-check${task.status === "done" ? " is-done" : ""}`}
+                className={`dt-check${sessionDone ? " is-done" : ""}`}
                 role="checkbox"
-                aria-checked={task.status === "done"}
-                aria-label={task.status === "done" ? "标记未完成" : "标记完成"}
-                title={task.status === "done" ? "标记未完成" : "标记完成"}
+                aria-checked={sessionDone}
+                aria-label={sessionDone ? "标记本段未完成" : "标记本段完成"}
+                title={sessionDone ? "标记本段未完成" : "标记本段完成"}
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onToggleDone(block); }}
+                onClick={(e) => { e.stopPropagation(); onToggleDone(block.id); }}
               >
-                {task.status === "done" ? <CheckSquare size={16} /> : <Square size={16} />}
+                {sessionDone ? <CheckSquare size={16} /> : <Square size={16} />}
               </button>
             )}
             <div className="dt-body">
               <div className="dt-bt">{title}</div>
               <div className="dt-bm">
                 {toTime(startMin)}–{toTime(endMin)} · {endMin - startMin}分钟
+                {sessionIndex ? ` · 第 ${sessionIndex}/${sessions.length} 段` : ""}
                 {busy ? " · 不可用" : block.auto ? " · 自动" : ""}
               </div>
             </div>
             <div className="dt-actions">
               {!busy && block.taskId && task && onStartFocus && (
-                <button title="进入专注模式" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onStartFocus(block.id); }}>
+                <button type="button" title="进入本段专注模式" aria-label={`专注 ${title} 本段`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onStartFocus(block.id); }}>
                   <Play size={14} />
+                </button>
+              )}
+              {!busy && task && onSplitBlock && (
+                <button type="button" className="dt-split-action" title="从中间拆分为两段" aria-label={`拆分 ${title} 本段`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onSplitBlock(block.id); }}>
+                  <Scissors size={14} />
+                </button>
+              )}
+              {!busy && task && onDuplicateBlock && (
+                <button type="button" className="dt-duplicate-action" title="复制到下一个完整空档" aria-label={`复制 ${title} 本段`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDuplicateBlock(block.id); }}>
+                  <Copy size={14} />
                 </button>
               )}
               <button type="button" title={`编辑 ${title}（${toTime(startMin)}–${toTime(endMin)}）`} aria-label={`编辑 ${title}，${toTime(startMin)} 到 ${toTime(endMin)}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => onEdit(block)}>

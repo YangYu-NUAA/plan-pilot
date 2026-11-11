@@ -12,7 +12,7 @@ export function normalizeKey(title) {
 }
 
 export function emptyDraft() {
-  return { goals: [], tasks: [], busy: [] };
+  return { goals: [], tasks: [], busy: [], sessions: [] };
 }
 
 // 把模型返回的一个 action 映射成 coach item 形态（交给 normalizeCoachItems 进一步规整）。
@@ -46,6 +46,16 @@ export function actionToItem(action) {
   if (action.type === "add_busy") {
     return { kind: "busy", title: action.title, date: action.date, start: action.start, end: action.end };
   }
+  if (action.type === "add_session") {
+    return {
+      kind: "session",
+      title: action.title,
+      taskId: action.taskRef || action.taskId || "",
+      date: action.date,
+      start: action.start,
+      end: action.end,
+    };
+  }
   return null;
 }
 
@@ -60,6 +70,7 @@ export function coachMessageFrom(result) {
 function draftKey(item) {
   if (item.kind === "goal") return `goal|${item.type || ""}|${normalizeKey(item.title)}`;
   if (item.kind === "busy") return `busy|${item.date || ""}|${normalizeKey(item.title)}`;
+  if (item.kind === "session") return `session|${item.taskId || ""}|${item.date || ""}|${item.start || ""}|${item.end || ""}|${normalizeKey(item.title)}`;
   return `task|${item.date || ""}|${normalizeKey(item.title)}`;
 }
 
@@ -67,8 +78,13 @@ function draftKey(item) {
 // 返回新草稿（不可变更原对象）。空标题项忽略。
 export function mergeCoachDraft(draft, items) {
   const base = draft && draft.goals ? draft : emptyDraft();
-  const next = { goals: base.goals.slice(), tasks: base.tasks.slice(), busy: base.busy.slice() };
-  const seen = new Set([...next.goals, ...next.tasks, ...next.busy].map(draftKey));
+  const next = {
+    goals: base.goals.slice(),
+    tasks: base.tasks.slice(),
+    busy: base.busy.slice(),
+    sessions: Array.isArray(base.sessions) ? base.sessions.slice() : [],
+  };
+  const seen = new Set([...next.goals, ...next.tasks, ...next.busy, ...next.sessions].map(draftKey));
   (Array.isArray(items) ? items : []).forEach((item) => {
     if (!item || !String(item.title || "").trim()) return;
     const key = draftKey(item);
@@ -76,6 +92,7 @@ export function mergeCoachDraft(draft, items) {
     seen.add(key);
     if (item.kind === "goal") next.goals.push(item);
     else if (item.kind === "busy") next.busy.push(item);
+    else if (item.kind === "session") next.sessions.push(item);
     else next.tasks.push(item);
   });
   return next;

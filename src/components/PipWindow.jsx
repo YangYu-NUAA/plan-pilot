@@ -11,7 +11,7 @@ const nativeFloating = typeof window !== "undefined" && Boolean(window.planPilot
 export const pipSupported =
   (typeof window !== "undefined" && "documentPictureInPicture" in window) || nativeFloating;
 
-function PipContent({ current, next, taskById, onCompleteTask, onClose }) {
+function PipContent({ current, next, taskById, onCompleteBlock, onClose }) {
   const [now, setNow] = useState(() => appNow());
   useEffect(() => {
     const timer = setInterval(() => setNow(appNow()), 1000 * 10);
@@ -50,10 +50,10 @@ function PipContent({ current, next, taskById, onCompleteTask, onClose }) {
             <i style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
           <div className="pip-actions">
-            {task && task.status !== "done" && (
-              <button type="button" className="pip-done" onClick={() => onCompleteTask(task.id)}>
+            {task && !block.done && task.status !== "done" && (
+              <button type="button" className="pip-done" onClick={() => onCompleteBlock(block.id)}>
                 <Check size={13} />
-                完成
+                完成本段
               </button>
             )}
           </div>
@@ -65,7 +65,7 @@ function PipContent({ current, next, taskById, onCompleteTask, onClose }) {
   );
 }
 
-export function PipWindow({ blocks, taskById, selectedDate, onCompleteTask }) {
+export function PipWindow({ blocks, taskById, selectedDate, onCompleteBlock }) {
   const [pipWin, setPipWin] = useState(null);
   const pipWinRef = useRef(null);
 
@@ -147,7 +147,7 @@ export function PipWindow({ blocks, taskById, selectedDate, onCompleteTask }) {
             current={current}
             next={next}
             taskById={taskById}
-            onCompleteTask={onCompleteTask}
+            onCompleteBlock={onCompleteBlock}
             onClose={closePip}
           />,
           pipWin.container,

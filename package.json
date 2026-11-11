@@ -1,6 +1,6 @@
 {
   "name": "plan-pilot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "引导式任务录入、目标拆解和自动时间规划工具。",
   "private": true,
   "keywords": [
@@ -31,9 +31,10 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test test/*.test.mjs",
-    "test:e2e": "npm run test:e2e:timeline && npm run test:e2e:gantt",
+    "test:e2e": "npm run test:e2e:timeline && npm run test:e2e:gantt && npm run test:e2e:sessions",
     "test:e2e:timeline": "node scripts/e2e-timeline-autoscroll.mjs",
     "test:e2e:gantt": "node scripts/e2e-gantt.mjs",
+    "test:e2e:sessions": "node scripts/e2e-task-sessions.mjs",
     "electron:dev": "npm run build && electron .",
     "mac:build": "npm run build && electron-builder --mac"
   },

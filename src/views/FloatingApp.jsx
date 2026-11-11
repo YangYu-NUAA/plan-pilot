@@ -131,7 +131,7 @@ export function FloatingApp() {
         </div>
         <div className="floating-focus-actions">
           <button type="button" className="pip-done" onClick={() => sendCmd("complete")}>
-            <Check size={13} /> 完成
+            <Check size={13} /> 完成本段
           </button>
           <button type="button" className="pip-extend" onClick={() => sendCmd("extend")} title="块尾顺延 10 分钟">
             <Plus size={13} /> 10 分钟
