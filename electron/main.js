@@ -1,16 +1,17 @@
-import { app, BrowserWindow, ipcMain, Menu, session, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, safeStorage, session, shell } from "electron";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createApiHandler } from "../server/dataProxy.js";
+import { SecureCredentialStore } from "./secureCredentialStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 统一 userData：开发（electron .，读 package.json name）与打包（读 productName）
 // 的默认目录名不一致，这里显式规范成同一个，保证数据目录稳定。
-const USER_DATA_DIR = path.join(app.getPath("appData"), "Plan Pilot");
+const USER_DATA_DIR = process.env.PLAN_PILOT_USER_DATA_DIR || path.join(app.getPath("appData"), "Plan Pilot");
 app.setPath("userData", USER_DATA_DIR);
 
 // 数据目录：默认应用专属目录，环境变量可覆盖（开发调试用）
@@ -34,6 +35,35 @@ const MIME = {
 };
 
 const apiHandler = createApiHandler({ dataDir: DATA_DIR });
+const credentialStore = new SecureCredentialStore({
+  filePath: path.join(USER_DATA_DIR, "secure-credentials.json"),
+  safeStorage,
+});
+
+function registerSecureStorageIpc(port) {
+  function assertTrustedSender(event) {
+    const senderUrl = new URL(event.senderFrame.url);
+    if (senderUrl.protocol !== "http:" || senderUrl.hostname !== "127.0.0.1" || senderUrl.port !== String(port)) {
+      throw new Error("Untrusted secure-storage caller.");
+    }
+  }
+
+  ipcMain.handle("pp:secure-storage-status", async (event) => {
+    assertTrustedSender(event);
+    return {
+      available: await credentialStore.isAvailable(),
+      backend: process.platform === "darwin" ? "keychain" : "system",
+    };
+  });
+  ipcMain.handle("pp:secure-storage-get", (event, key) => {
+    assertTrustedSender(event);
+    return credentialStore.get(key);
+  });
+  ipcMain.handle("pp:secure-storage-set", (event, key, value) => {
+    assertTrustedSender(event);
+    return credentialStore.set(key, value);
+  });
+}
 
 function startLocalServer() {
   const server = http.createServer((req, res) => {
@@ -155,6 +185,7 @@ app.whenReady().then(async () => {
 
   buildMenu();
   const port = await startLocalServer();
+  registerSecureStorageIpc(port);
   console.log(`[plan-pilot] local server on http://127.0.0.1:${port} | data: ${DATA_DIR}`);
   createWindow(port);
 
@@ -166,10 +197,16 @@ app.whenReady().then(async () => {
       return;
     }
     floatingWin = new BrowserWindow({
-      width: 322,
-      height: 224,
+      width: 360,
+      height: 260,
+      minWidth: 300,
+      minHeight: 210,
       frame: false, // 内部已有品牌/状态行 + 拖动区，系统标题栏冗余
+      movable: true,
       resizable: true,
+      thickFrame: true,
+      hasShadow: true,
+      roundedCorners: true,
       alwaysOnTop: true,
       visibleOnAllWorkspaces: true,
       fullscreenable: false,

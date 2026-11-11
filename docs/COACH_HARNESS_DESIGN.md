@@ -8,8 +8,8 @@
 当前 `runPlanningCoach` 每轮只发 **一次** `callPlanningAi`，让模型在同一次调用里同时「对话 + 判 phase + 吐 `items[]`」，且 app 侧 **不保留任何跨轮状态**（只把最新 `items` 覆盖进 `suggestions`）。弱模型于是停在 clarify、把方案写进 `message` 文字、`items` 为空 → 用户「看不到建议、不落成目标」。
 
 目标行为：
-- app 侧维护跨轮累积的 **草稿** `coach.draft`（goals/tasks/busy），模型每轮只提 **增量**，app 负责合并/去重；草稿是权威来源。
-- 落一条目标 = 一个 **显式动作**（`add_goal` / `add_task` / `add_busy` / `ask` / `done`），而非埋在大 JSON 数组里被跳过。
+- app 侧维护跨轮累积的 **草稿** `coach.draft`（goals/tasks/busy/sessions），模型每轮只提 **增量**，app 负责合并/去重；草稿是权威来源。
+- 落一条目标 = 一个 **显式动作**（`add_goal` / `add_task` / `add_busy` / `add_session` / `ask` / `done`），而非埋在大 JSON 数组里被跳过。`add_session` 只关联已有任务并新增工作段，不复制任务。
 - 长期 / 月度访谈由 app 用 **区域 checklist** 确定性地带模型逐个方向问。
 - 模型若声称完成却没产出，**自校验后重试一次**。
 - UI 实时显示草稿（可逐条删），「加入计划」把草稿落库。

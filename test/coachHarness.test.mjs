@@ -61,3 +61,16 @@ test("coachMessageFrom：优先 message，否则取 ask 的 question", () => {
   assert.equal(coachMessageFrom({ message: "  ", actions: [{ type: "ask", question: "你有具体课题吗？" }] }), "你有具体课题吗？");
   assert.equal(coachMessageFrom({ actions: [{ type: "add_goal", title: "x" }] }), "");
 });
+
+test("add_session：映射现有任务工作段，同任务不同时间的草稿不去重", () => {
+  const action = { type: "add_session", taskRef: "t-deep", title: "写技术路线", date: "2026-11-11", start: "09:00", end: "11:00" };
+  assert.deepEqual(actionToItem(action), {
+    kind: "session", taskId: "t-deep", title: "写技术路线", date: "2026-11-11", start: "09:00", end: "11:00",
+  });
+  const draft = mergeCoachDraft(emptyDraft(), [
+    actionToItem(action),
+    actionToItem({ ...action, start: "14:00", end: "16:00" }),
+  ]);
+  assert.equal(draft.sessions.length, 2);
+  assert.equal(draft.tasks.length, 0);
+});

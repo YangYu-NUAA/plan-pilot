@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlarmClock, Check, Plus, X } from "lucide-react";
+import { AlarmClock, Check, Minus, Plus, X } from "lucide-react";
 import { getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { appNow, setActiveTimeZone } from "../utils/clock.js";
+import { adjustBlockDuration, isTaskSessionDone, setTaskSessionDone } from "../planner/taskSessions.js";
 
 // Electron 原生迷你窗（#floating）：两种形态。
-//  - 常览：当前/下一个时间块 + 进度（/api/data 30s 轮询，只读）
+//  - 常览：当前/下一个时间块 + 进度 + 完成/加减时长（/api/data 轮询校准）
 //  - 专注：主窗发起的迷你番茄钟——状态经同源 localStorage 'plan-pilot-focus' 同步，
-//    完成/+10/退出通过 'plan-pilot-focus-cmd' 遥控主窗执行（主窗仍是唯一数据写方）
+//    两种形态的操作都携带 blockId，经 'plan-pilot-focus-cmd' 由主窗统一写入。
 const FOCUS_KEY = "plan-pilot-focus";
 const FOCUS_CMD_KEY = "plan-pilot-focus-cmd";
 
@@ -19,8 +20,25 @@ function readFocus() {
   }
 }
 
-function sendCmd(type) {
-  localStorage.setItem(FOCUS_CMD_KEY, JSON.stringify({ type, nonce: Date.now() + Math.random() }));
+function sendCmd(type, blockId) {
+  localStorage.setItem(FOCUS_CMD_KEY, JSON.stringify({ type, blockId, nonce: Date.now() + Math.random() }));
+}
+
+function FloatingActions({ block, task, onAction }) {
+  if (!block || !task || isTaskSessionDone(block, task)) return null;
+  return (
+    <div className="floating-actions" role="group" aria-label="当前时间块操作">
+      <button type="button" className="pip-done" onClick={() => onAction("complete", block)}>
+        <Check size={13} /> 完成本段
+      </button>
+      <button type="button" className="pip-extend" aria-label="减少 10 分钟" title="减少 10 分钟（最短保留 15 分钟）" onClick={() => onAction("shorten", block)}>
+        <Minus size={13} /> 10 分钟
+      </button>
+      <button type="button" className="pip-extend" aria-label="增加 10 分钟" title="增加 10 分钟" onClick={() => onAction("extend", block)}>
+        <Plus size={13} /> 10 分钟
+      </button>
+    </div>
+  );
 }
 
 export function FloatingApp() {
@@ -90,6 +108,24 @@ export function FloatingApp() {
 
   const taskById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
 
+  function runAction(type, block) {
+    sendCmd(type, block.id);
+    // 主窗仍是唯一持久化写方；小窗同步做乐观更新，不必等 30s 轮询才看到结果。
+    setData((currentData) => {
+      if (!currentData) return currentData;
+      if (type === "extend" || type === "shorten") {
+        return {
+          ...currentData,
+          blocks: currentData.blocks.map((item) => item.id === block.id ? adjustBlockDuration(item, type === "extend" ? 10 : -10) : item),
+        };
+      }
+      if (type === "complete") {
+        return { ...currentData, ...setTaskSessionDone(currentData.tasks, currentData.blocks, block.id, true) };
+      }
+      return currentData;
+    });
+  }
+
   // —— 专注模式：迷你番茄钟 ——
   const focusBlock = focus ? blocks.find((b) => b.id === focus.blockId) : null;
   // 残留清理：块已删/跨天陈旧（结束超 2 小时且任务已完成）→ 忽略，回常览
@@ -118,7 +154,7 @@ export function FloatingApp() {
           <span className="floating-brand">
             {leadMin > 0 ? `${Math.max(1, Math.round(leadMin))} 分钟后开始` : `${focusBlock.start}–${focusBlock.end}`}
           </span>
-          <button type="button" className="pip-close" onClick={() => sendCmd("exit")} title="退出专注（小窗回到常览）">
+          <button type="button" className="pip-close" onClick={() => sendCmd("exit", focusBlock.id)} title="退出专注（小窗回到常览）">
             <X size={13} />
           </button>
         </div>
@@ -129,14 +165,7 @@ export function FloatingApp() {
         <div className="pip-progress">
           <i style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
-        <div className="floating-focus-actions">
-          <button type="button" className="pip-done" onClick={() => sendCmd("complete")}>
-            <Check size={13} /> 完成
-          </button>
-          <button type="button" className="pip-extend" onClick={() => sendCmd("extend")} title="块尾顺延 10 分钟">
-            <Plus size={13} /> 10 分钟
-          </button>
-        </div>
+        <FloatingActions block={focusBlock} task={focusTask} onAction={runAction} />
       </div>
     );
   }
@@ -176,6 +205,7 @@ export function FloatingApp() {
           <div className="pip-progress">
             <i style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
+          <FloatingActions block={block} task={task} onAction={runAction} />
         </>
       ) : (
         <span className="pip-empty">今天暂无时间块</span>

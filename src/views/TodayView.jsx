@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
+import { appNow } from "../utils/clock.js";
 import { playTick } from "../utils/soundFx.js";
 import { tapDone } from "../utils/hapticsFx.js";
-import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions, energyColor } from "../constants/labels.js";
+import { priorityOrder, priorityLabel, goalTypeLabel, energyOptions } from "../constants/labels.js";
 import { parseTimeInSentence } from "../planner/textExtract.js";
 import { findSlotForTask } from "../planner/scheduling.js";
 import { isTicketPurchaseTask } from "../planningSemantics.js";
@@ -56,10 +57,14 @@ export function TodayView({
   addBlockDirectly,
   deleteBlock,
   updateBlock,
+  splitBlock,
+  duplicateBlock,
+  toggleBlockDone,
   applyDragReschedule,
   scheduleTaskAtMinute,
   aiStatus,
   aiTaskSuggestions,
+  setAiTaskSuggestions,
   generateTodayAiGuide,
   acceptAiTaskSuggestions,
   planningCoach,
@@ -163,7 +168,7 @@ export function TodayView({
   // 移动端分页：规划（中枢+统计+任务）/ 时间表（独占全屏时间轴）；桌面端始终同屏
   const [mobileTab, setMobileTab] = useState("plan");
   const conversationActive =
-    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
+    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || Boolean(planningCoach.error) || conversationOpen;
 
   function changeCoachScope(value) {
     setPlanningCoach((coach) => ({
@@ -255,7 +260,11 @@ export function TodayView({
       setScheduleNotice({ text: `「${name}」标题里的时间更像车次/出发时间。已填好下方表单，请手动选你真正要执行的时间再添加。`, tone: "info" });
       return;
     }
-    const slot = findSlotForTask(task, planner.settings, todayBlocks, selectedDate);
+    const currentAppTime = appNow();
+    const isToday = getLocalDate(currentAppTime) === selectedDate;
+    const nowMinutes = currentAppTime.getHours() * 60 + currentAppTime.getMinutes();
+    const notBefore = isToday ? nowMinutes : null;
+    const slot = findSlotForTask(task, planner.settings, todayBlocks, selectedDate, { notBefore });
     if (slot && addBlockDirectly({ type: "task", taskId: question.taskId, title: "", start: slot.start, end: slot.end })) {
       setScheduleQuestions((qs) => qs.filter((q) => q.id !== question.id));
       setScheduleNotice({ text: `已把「${name}」放到 ${slot.start}–${slot.end}。`, tone: "info" });
@@ -340,7 +349,7 @@ export function TodayView({
         <div className="coach-copy">
           <div>
             <p className="eyebrow">晨间问题</p>
-            <h2 style={{ color: energyColor(dayPlan.energy) }}>{formatHumanDate(selectedDate)}</h2>
+            <h2>{dayPlan.morningDone ? "今天已就绪" : "先确定今天的节奏"}</h2>
             {!coachExpanded && (
               <p className="coach-summary">
                 {dayPlan.morningDone ? "已保存" : dayPlan.fixed || dayPlan.topThree || dayPlan.changes ? "有未保存内容" : "未填写"}
@@ -448,8 +457,10 @@ export function TodayView({
                   </span>
                 </div>
                 <button
+                  type="button"
                   className="icon-button"
                   title="不要这条"
+                  aria-label={`不要建议：${task.title}`}
                   onClick={() => setAiTaskSuggestions((prev) => prev.filter((t) => t.id !== task.id))}
                 >
                   <X size={16} />
@@ -522,9 +533,11 @@ export function TodayView({
                   <span>
                     {item.kind === "goal"
                       ? `${goalTypeLabel[item.type]}目标 · ${priorityLabel[item.priority]}优先级`
-                      : item.kind === "busy"
-                        ? `${item.start}-${item.end} · 固定安排`
-                        : `${item.date} · ${item.estimateMinutes} 分钟 · ${priorityLabel[item.priority]}优先级`}
+                      : item.kind === "session"
+                        ? `${item.date} · ${item.start}-${item.end} · 任务工作段`
+                        : item.kind === "busy"
+                          ? `${item.start}-${item.end} · 固定安排`
+                          : `${item.date} · ${item.estimateMinutes} 分钟 · ${priorityLabel[item.priority]}优先级`}
                   </span>
                 </article>
               ))}
@@ -874,10 +887,7 @@ export function TodayView({
             blocks={planner.blocks}
             taskById={taskById}
             selectedDate={selectedDate}
-            onCompleteTask={(taskId) => {
-              updateTask(taskId, { status: "done" });
-              playTick(planner.settings);
-            }}
+            onCompleteBlock={toggleBlockDone}
           />
           <button className="secondary-action" onClick={autoSchedule} disabled={aiStatus.loading || Boolean(schedulePreview)}>
             <Sparkles size={18} />
@@ -1079,6 +1089,12 @@ export function TodayView({
             </select>
             <input className="dt-edit-title" value={blockEditDraft.title}
               onChange={(e) => setBlockEditDraft((d) => ({ ...d, title: e.target.value }))} placeholder="标题（可选）" />
+            {todayBlocks.some((block) => block.id === editingBlockId && block.taskId && block.type !== "busy") && (
+              <>
+                <button type="button" className="btn-text" onClick={() => { if (splitBlock(editingBlockId)) cancelEditingBlock(); }}>拆分为两段</button>
+                <button type="button" className="btn-text" onClick={() => { if (duplicateBlock(editingBlockId)) cancelEditingBlock(); }}>复制到空档</button>
+              </>
+            )}
             <button className="btn-text" onClick={() => saveEditingBlock(editingBlockId)}>保存</button>
             <button className="btn-text" onClick={cancelEditingBlock}>取消</button>
           </div>
@@ -1093,14 +1109,9 @@ export function TodayView({
           onDropTask={scheduleTaskAtMinute}
           onEdit={startEditingBlock}
           onDelete={deleteBlock}
-          onToggleDone={(block) => {
-            const t = taskById[block.taskId];
-            if (t) {
-              const marking = t.status !== "done";
-              updateTask(t.id, { status: marking ? "done" : "open" });
-              if (marking) { playTick(planner.settings); tapDone(); }
-            }
-          }}
+          onSplitBlock={splitBlock}
+          onDuplicateBlock={duplicateBlock}
+          onToggleDone={toggleBlockDone}
           onStartFocus={onStartFocus}
           dragTask={dragTaskId ? taskById[dragTaskId] : null}
           fitAll={fitAll}
@@ -1126,14 +1137,9 @@ export function TodayView({
               onDropTask={scheduleTaskAtMinute}
               onEdit={startEditingBlock}
               onDelete={deleteBlock}
-              onToggleDone={(block) => {
-                const t = taskById[block.taskId];
-                if (t) {
-                  const marking = t.status !== "done";
-                  updateTask(t.id, { status: marking ? "done" : "open" });
-                  if (marking) { playTick(planner.settings); tapDone(); }
-                }
-              }}
+              onSplitBlock={splitBlock}
+              onDuplicateBlock={duplicateBlock}
+              onToggleDone={toggleBlockDone}
               onStartFocus={onStartFocus}
               dragTask={dragTaskId ? taskById[dragTaskId] : null}
               fitAll

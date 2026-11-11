@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { appNow } from "../utils/clock.js";import { ArrowRight, CalendarClock, Check, Play } from "lucide-react";
 import { getLocalDate, toMinutes, toTime } from "../utils/dateTime.js";
 import { sortBlocks } from "../planner/scheduling.js";
+import { isTaskSessionDone } from "../planner/taskSessions.js";
 import { MetricRing } from "../components/ui/Metric.jsx";
 import { Illustration } from "../components/ui/Illustration.jsx";
 
 // 「当下」视图：打开手机第一眼只要一个答案——现在该做什么。
 // 大字号当前块 + 剩余倒计时 + 完成/专注大按钮；下面是今日剩余进程。
-export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocus, onGoToday }) {
+export function NowView({ planner, taskById, goalById, onToggleBlock, onStartFocus, onGoToday }) {
   const [now, setNow] = useState(() => appNow());
   useEffect(() => {
     const timer = setInterval(() => setNow(appNow()), 1000);
@@ -17,7 +18,7 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
   const todayStr = getLocalDate();
   const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-  const { current, next, remaining, doneCount, totalCount } = useMemo(() => {
+  const { current, next, remaining, doneCount, totalCount, hasBlocks } = useMemo(() => {
     const blocks = sortBlocks(planner.blocks.filter((b) => b.date === todayStr));
     const cur = blocks.find((b) => nowMin >= toMinutes(b.start) && nowMin < toMinutes(b.end)) || null;
     const nxt = blocks.find((b) => toMinutes(b.start) > nowMin) || null;
@@ -29,12 +30,14 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
       remaining: rem,
       doneCount: todayTasks.filter((t) => t.status === "done").length,
       totalCount: todayTasks.length,
+      hasBlocks: blocks.length > 0,
     };
   }, [planner.blocks, planner.tasks, todayStr, nowMin]);
 
   const currentTask = current?.taskId ? taskById[current.taskId] : null;
   const currentTitle = currentTask?.title || current?.title || "";
   const currentGoal = currentTask?.goalId ? goalById[currentTask.goalId]?.title : "";
+  const currentDone = isTaskSessionDone(current, currentTask);
 
   const remainSec = current ? Math.max(0, Math.round((toMinutes(current.end) - nowMin) * 60)) : 0;
   const progress = current
@@ -61,15 +64,21 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
           </div>
           <div className="now-actions">
             {currentTask && (
-              <button type="button" className="now-btn primary" onClick={() => onToggleTask(currentTask.id)}>
+              <button
+                type="button"
+                className={`now-btn ${currentDone ? "secondary" : "primary"}`}
+                onClick={() => onToggleBlock(current.id)}
+              >
                 <Check size={22} />
-                完成
+                {currentDone ? "恢复本段" : "完成本段"}
               </button>
             )}
-            <button type="button" className="now-btn secondary" onClick={() => onStartFocus(current.id)}>
-              <Play size={20} />
-              专注
-            </button>
+            {currentTask && !currentDone && (
+              <button type="button" className="now-btn secondary" onClick={() => onStartFocus(current.id)}>
+                <Play size={20} />
+                专注
+              </button>
+            )}
           </div>
         </section>
       ) : next ? (
@@ -89,12 +98,14 @@ export function NowView({ planner, taskById, goalById, onToggleTask, onStartFocu
       ) : (
         <section className="now-hero is-idle">
           <Illustration name="compass" size={64} />
-          <h2 className="now-title">今天没有安排时间块</h2>
-          <p className="now-time">说一句话，让 AI 帮你把今天排出来</p>
+          <h2 className="now-title">{hasBlocks ? "今天的时间块已结束" : "今天还没有时间块"}</h2>
+          <p className="now-time">
+            {hasBlocks ? "去今日视图查看完成情况，或为下一天留出从容的起点。" : "先写下一件具体的小事，不需要从完美计划开始。"}
+          </p>
           <div className="now-actions">
             <button type="button" className="now-btn primary" onClick={onGoToday}>
               <ArrowRight size={20} />
-              去规划
+              {hasBlocks ? "查看今日" : "开始规划"}
             </button>
           </div>
         </section>

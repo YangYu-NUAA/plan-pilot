@@ -27,6 +27,8 @@ export function OmniBar({
   const inputRef = useRef(null);
   const baseRef = useRef(""); // 录音开始时输入框已有内容
   const noteTimer = useRef(null);
+  const inputIntents = parseCommandInput(input, { selectedDate, todayStr });
+  const nextIntent = inputIntents.find((intent) => !intent.weak);
 
   useEffect(() => () => clearTimeout(noteTimer.current), []);
 
@@ -42,17 +44,17 @@ export function OmniBar({
     flashNote("这句交给 AI 访谈处理了 ↘");
   }
 
-  // 统一入口：只有强结构化指令（含时间/日期的安排、跳日期、命令）直接执行；
-  // 其余一律交给 AI 访谈——OmniBar 替代的是完整访谈的输入入口，
-  // 随手一句话不该不经过对话就变成任务。
+  // 明确指令（含日期/时间/时长或命令词）本地执行；弱输入交给 AI。
+  // 输入栏下方同步展示回车结果，✨ 永远是显式的 AI 入口。
   function submit(text) {
     const value = String(text || "").trim();
     if (!value) return;
     const intents = parseCommandInput(value, { selectedDate, todayStr });
-    const strong = intents.find((i) => i.kind !== "add-task");
+    const strong = intents.find((intent) => !intent.weak);
     if (strong) {
       onExecute(strong);
       setInput("");
+      flashNote(strong.label);
       return;
     }
     forwardToAi(value);
@@ -89,7 +91,7 @@ export function OmniBar({
             if (e.key === "Enter") submit(input);
             else if (e.key === "Escape") setInput("");
           }}
-          placeholder="和 AI 说任何事：帮我规划本周 / 明天下午3点有组会（含时间的安排会自动排入时间轴）"
+          placeholder="写周报 30分钟 / 明天下午3点组会 / 其他想法交给 AI"
           aria-label="全能输入栏"
         />
         {onScopeChange && (
@@ -131,6 +133,11 @@ export function OmniBar({
           <Sparkles size={15} />
         </button>
       </div>
+      {input.trim() && (
+        <div className="omnibar-hint" role="status">
+          {nextIntent ? `↵ ${nextIntent.label} · ✨ 交给 AI` : "↵ 交给 AI 访谈，不会直接创建任务"}
+        </div>
+      )}
       {voiceState === "recording" && <div className="omnibar-status is-live">正在录音——说完再点一次麦克风结束</div>}
       {voiceState === "transcribing" && <div className="omnibar-status">识别中…</div>}
       {note && <div className="omnibar-note">{note}</div>}

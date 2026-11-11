@@ -6,7 +6,7 @@ import { isNative } from "../app/platform.js";
 import { tapSuccess } from "../utils/hapticsFx.js";
 
 // 专注模式：点任务块/任务上的 ▶ 进入。全屏覆盖层，大倒计时圆环，
-// 完成即把任务标为 done 并退出。纯本地 state，不引入新数据结构。
+// 完成即打卡当前工作段；多段任务不会连带完成其他段。
 export function FocusOverlay({ task, block, goalTitle, onComplete, onExtend, onExit }) {
   const startMin = toMinutes(block.start);
   const endMin = toMinutes(block.end);
@@ -82,7 +82,7 @@ export function FocusOverlay({ task, block, goalTitle, onComplete, onExtend, onE
         <div className="focus-actions">
           <button type="button" className="focus-done" onClick={() => { tapSuccess(); onComplete(); }}>
             <Check size={20} />
-            完成
+            完成本段
           </button>
           <button type="button" className="focus-extend" onClick={() => onExtend(10)}>
             <Plus size={16} />
