@@ -166,15 +166,39 @@ function App() {
   const [focusBlockId, setFocusBlockId] = useState(null); // 专注模式：正在聚焦的时间块 id
   // 块前提醒：开始前 5 分钟 + 开始时刻，页内浮层（Electron 壳内另发系统通知）
   const [blockReminder, dismissBlockReminder] = useBlockReminders({ blocks: planner.blocks, settings: planner.settings });
-  const [planningCoach, setPlanningCoach] = useState({
-    scope: "today",
-    messages: [],
-    input: "",
-    suggestions: [],
-    draft: emptyDraft(), // 跨轮累积的计划草稿（喂给模型作 draftSummary 去重提示；step 4 起驱动 UI）
-    loading: false,
-    error: "",
+  // 访谈对话跨会话保留：messages/scope 持久化到 localStorage——聊天记录是用户资产，
+  // 切视图、收起、重启都不丢（resetLocalData 时清）
+  const COACH_SESSION_KEY = "plan-pilot-coach-session";
+  const [planningCoach, setPlanningCoach] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COACH_SESSION_KEY) || "null");
+      if (saved?.messages?.length) {
+        return {
+          scope: saved.scope || "today",
+          messages: saved.messages,
+          input: "",
+          suggestions: [],
+          draft: emptyDraft(),
+          loading: false,
+          error: "",
+        };
+      }
+    } catch { /* ignore */ }
+    return {
+      scope: "today",
+      messages: [],
+      input: "",
+      suggestions: [],
+      draft: emptyDraft(), // 跨轮累积的计划草稿（喂给模型作 draftSummary 去重提示；step 4 起驱动 UI）
+      loading: false,
+      error: "",
+    };
   });
+  useEffect(() => {
+    try {
+      localStorage.setItem(COACH_SESSION_KEY, JSON.stringify({ scope: planningCoach.scope, messages: planningCoach.messages }));
+    } catch { /* ignore */ }
+  }, [planningCoach.scope, planningCoach.messages]);
   const [reviewDraft, setReviewDraft] = useState({
     completed: "",
     blockers: "",
@@ -1708,6 +1732,7 @@ function App() {
       loading: false,
       error: "",
     });
+    try { localStorage.removeItem("plan-pilot-coach-session"); } catch { /* ignore */ }
     setReviewDraft({ completed: "", blockers: "", adjustments: "", tomorrowFocus: "" });
   }
 

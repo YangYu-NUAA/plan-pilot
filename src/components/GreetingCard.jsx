@@ -51,6 +51,12 @@ async function aiGreeting({ ai, apiKey, serverKeyOk, context }) {
     ],
   });
   const text = String(result?.content || result?.message || "").trim();
+  // 防泄漏：推理型模型偶尔把 prompt 原文（含「用户要求 / 关键信息」注入）当正文返回，
+  // 直接渲染等于把内部提示词展示给用户——识别这类回显并拒绝使用（回落本地模板）
+  const looksLikePromptLeak =
+    text.length > 90 ||
+    /用户要求|关键信息|早安问候|系统提示|system prompt|你是.*助手/.test(text);
+  if (looksLikePromptLeak) return "";
   return text.slice(0, 120);
 }
 

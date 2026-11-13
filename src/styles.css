@@ -2607,6 +2607,9 @@ textarea:focus-visible {
 /* 全天 00:00–24:00 较高，容器内部滚动（自动定位到「现在」），避免页面被一根 24 小时长条撑爆 */
 .day-timeline {
   position: relative; margin-top: 6px; flex: 1 1 0%; min-height: 300px; overflow-y: auto; scrollbar-gutter: stable;
+  /* 滚动链：到达时间轴边缘后滚轮自然传给页面，不再被困在轴内 */
+  overscroll-behavior: auto;
+  max-height: 76vh; /* 面板不过分吃视口，页面级滚动保持可用 */
 }
 .dt-hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hair); }
 .dt-hour span {
@@ -3889,3 +3892,20 @@ li,
   font-size: 12.5px; font-weight: 700; cursor: pointer;
 }
 .pip-extend:hover { color: var(--ink); border-color: var(--ink); }
+
+/* —— 对话历史：收起折叠条 + 文本可选中复制 —— */
+.conversation-resume {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13px; font-weight: 600;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.conversation-resume:hover { border-color: var(--accent); color: var(--ink); }
+.conversation-resume-hint { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--faint); }
+.interview-message { user-select: text; cursor: text; } /* 对话内容可选中复制（出问题时能贴给开发者/模型） */

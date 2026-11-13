@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, Clock3, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
+import { CalendarClock, CalendarDays, CheckCircle2, CheckSquare, ChevronDown, Clock3, Copy, Maximize2, Pencil, Play, Plus, Rows3, SkipForward, Send, Sparkles, Square, Target, Trash2, X } from "lucide-react";
 import { addDays, formatHumanDate, formatShortDate, getLocalDate, toMinutes } from "../utils/dateTime.js";
 import { playTick } from "../utils/soundFx.js";
 import { tapDone } from "../utils/hapticsFx.js";
@@ -135,7 +135,8 @@ export function TodayView({
   const [dragTaskId, setDragTaskId] = useState(null); // 正在拖向时间轴的任务（幽灵块预览用）
   // 时间轴密度：fitAll=适配全天（动态缩放一屏放下），默认标准 56px/h；本地记忆
   const [fitAll, setFitAllState] = useState(() => {
-    try { return localStorage.getItem("plan-pilot-timeline-fit") === "1"; } catch { return false; }
+    // 默认开启适配全天：全天一屏内没有内部滚动，滚轮不会被时间轴吃掉（想滚页面滚不动的主因）
+    try { return localStorage.getItem("plan-pilot-timeline-fit") !== "0"; } catch { return true; }
   });
   function setFitAll(updater) {
     setFitAllState((cur) => {
@@ -158,14 +159,22 @@ export function TodayView({
   const [coachExpanded, setCoachExpanded] = useState(() => {
     try { return localStorage.getItem("plan-pilot-coach-expanded") === "1"; } catch { return false; }
   });
-  // 对话区默认隐藏：输入/语音/点「开始访谈」才展开；点 × 或「加入计划」后收回原样
+  // 对话展开态：× 只收起不清空——历史是用户的资产（另持久化在 App 侧，跨重启保留）
   const [conversationOpen, setConversationOpen] = useState(false);
   // 移动端分页：规划（中枢+统计+任务）/ 时间表（独占全屏时间轴）；桌面端始终同屏
   const [mobileTab, setMobileTab] = useState("plan");
-  const conversationActive =
-    planningCoach.messages.length > 0 || planningCoach.loading || planningCoach.suggestions.length > 0 || conversationOpen;
+  const hasConversation = planningCoach.messages.length > 0;
+  const conversationExpanded = conversationOpen || planningCoach.loading;
+  const suggestionsVisible = planningCoach.suggestions.length > 0;
 
   function changeCoachScope(value) {
+    if (
+      planningCoach.messages.length > 0 &&
+      !window.confirm("切换范围将开始一段新对话，当前对话记录会被清空。继续吗？")
+    ) {
+      // 还原 select 显示值：受控组件由 planningCoach.scope 驱动，直接 return 即可
+      return;
+    }
     setPlanningCoach((coach) => ({
       ...coach,
       scope: value,
@@ -177,7 +186,7 @@ export function TodayView({
   }
 
   function closeCoachConversation() {
-    setPlanningCoach((coach) => ({ ...coach, messages: [], suggestions: [], draft: emptyDraft(), error: "", input: "" }));
+    // 只收起，保留 messages/suggestions（出问题可回看、可复制）
     setConversationOpen(false);
   }
 
@@ -188,8 +197,21 @@ export function TodayView({
 
   function handleAcceptSuggestions() {
     acceptPlanningCoachSuggestions();
-    closeCoachConversation();
+    // 保留对话记录，仅收起展开态（建议由 accept 内部清空）
+    setConversationOpen(false);
   }
+
+  function copyConversation() {
+    const text = planningCoach.messages
+      .map((m) => (m.role === "assistant" ? "AI：" : "我：") + m.content)
+      .join("\n\n");
+    navigator.clipboard?.writeText(text).then(
+      () => setCopyNotice("已复制全部对话"),
+      () => setCopyNotice("复制失败，可手动选中文本复制"),
+    );
+    setTimeout(() => setCopyNotice(""), 2200);
+  }
+  const [copyNotice, setCopyNotice] = useState("");
 
   // 手动表单降级为「高级模式」：默认收起，状态存本地（OmniBar 是主输入方式）
   const [showTaskForm, setShowTaskForm] = useState(() => {
@@ -464,15 +486,20 @@ export function TodayView({
         )}
       </section>
 
-      {conversationActive && (
+      {(conversationExpanded || hasConversation || suggestionsVisible) && (
       <section className={`panel interview-panel${coachFlash ? " coach-flash" : ""}`}>
         <div className="section-heading">
           <div>
             <p className="eyebrow">AI 规划访谈</p>
             <h2>让模型主动问，再帮你拆</h2>
           </div>
-          <button type="button" className="icon-button" title="结束对话并收起" aria-label="结束对话并收起" onClick={closeCoachConversation}>
-            <X size={16} />
+          {hasConversation && (
+            <button type="button" className="icon-button" title="复制全部对话" aria-label="复制全部对话" onClick={copyConversation}>
+              <Copy size={16} />
+            </button>
+          )}
+          <button type="button" className="icon-button" title={conversationExpanded ? "收起对话（记录保留）" : "展开对话"} aria-label={conversationExpanded ? "收起对话" : "展开对话"} onClick={() => setConversationOpen((v) => !v)}>
+            {conversationExpanded ? <X size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
 
@@ -483,7 +510,14 @@ export function TodayView({
               text="在上方输入栏说话或打字即可开始——AI 会逐轮提问、你回答；出现建议卡片后点「加入计划」就落成目标 / 任务。"
             />
           )}
-          {(planningCoach.messages.length > 0 || planningCoach.loading) && (
+          {!conversationExpanded && hasConversation && (
+            <button type="button" className="conversation-resume" onClick={() => setConversationOpen(true)}>
+              <Sparkles size={14} />
+              对话已收起（{planningCoach.messages.length} 条，记录已保留）
+              <span className="conversation-resume-hint">展开查看 ↕</span>
+            </button>
+          )}
+          {conversationExpanded && (planningCoach.messages.length > 0 || planningCoach.loading) && (
             <div className="chat-scroll" ref={chatScrollRef}>
               <div className="interview-messages">
                 {planningCoach.messages.map((message, index) => (
@@ -507,9 +541,10 @@ export function TodayView({
               </div>
             </div>
           )}
-          {planningCoach.messages.length > 0 && !planningCoach.loading && (
+          {conversationExpanded && planningCoach.messages.length > 0 && !planningCoach.loading && (
             <p className="interview-reply-hint">在上方输入栏继续回答 ↗</p>
           )}
+          {copyNotice && <p className="interview-reply-hint">{copyNotice}</p>}
 
           {planningCoach.error && <div className="ai-error block">{planningCoach.error}</div>}
 
